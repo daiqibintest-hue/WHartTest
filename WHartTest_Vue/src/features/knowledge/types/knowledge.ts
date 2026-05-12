@@ -77,6 +77,14 @@ export interface KnowledgeGlobalConfig {
   parent_chunk_overlap: number;
   child_chunk_size: number;
   child_chunk_overlap: number;
+  enable_query_rewrite: boolean;
+  enable_mmr: boolean;
+  mmr_lambda: number;
+  reranker_weight: number;
+  rrf_weight: number;
+  enable_multi_query: boolean;
+  multi_query_count: number;
+  enable_hyde: boolean;
   updated_at?: string;
   updated_by?: number;
   updated_by_name?: string;
@@ -202,6 +210,7 @@ export interface DocumentChunk {
   created_at: string;
   parent_chunk?: string;
   chunk_level: 'parent' | 'child';
+  heading_path?: string[];
 }
 
 /**

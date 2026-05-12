@@ -1009,6 +1009,28 @@ class VectorStoreManager:
             or getattr(gc, "child_chunk_overlap", 200),
         }
 
+    @staticmethod
+    def _build_heading_path_from_metadata(metadata: dict) -> list:
+        """Build a heading_path list from MarkdownHeaderTextSplitter metadata."""
+        path = []
+        for key in ("h1", "h2", "h3", "h4"):
+            value = metadata.get(key)
+            if value:
+                path.append(str(value).strip())
+        return path
+
+    @staticmethod
+    def _extract_heading_path_from_content(content: str) -> list:
+        """Scan chunk content for Markdown headings to build a heading_path."""
+        heading_path = [None, None, None, None]
+        for match in re.finditer(r"^(#{1,4})\s+(.+)$", content, re.MULTILINE):
+            level = len(match.group(1)) - 1
+            title = match.group(2).strip()
+            heading_path[level] = title
+            for lower in range(level + 1, 4):
+                heading_path[lower] = None
+        return [h for h in heading_path if h]
+
     def _build_recursive_splitter(
         self, *, separators: Optional[List[str]] = None
     ) -> RecursiveCharacterTextSplitter:
@@ -1043,11 +1065,15 @@ class VectorStoreManager:
             for header_doc in header_docs:
                 merged_metadata = dict(document.metadata or {})
                 merged_metadata.update(header_doc.metadata or {})
+                heading_path = self._build_heading_path_from_metadata(merged_metadata)
                 base_doc = LangChainDocument(
                     page_content=header_doc.page_content,
-                    metadata=merged_metadata,
+                    metadata={**merged_metadata, "heading_path": heading_path},
                 )
-                chunks.extend(recursive_splitter.split_documents([base_doc]))
+                sub_chunks = recursive_splitter.split_documents([base_doc])
+                for sc in sub_chunks:
+                    sc.metadata.setdefault("heading_path", heading_path)
+                chunks.extend(sub_chunks)
 
         return chunks
 
@@ -1061,7 +1087,7 @@ class VectorStoreManager:
             return self._split_markdown_documents(documents)
 
         if strategy == "heading_aware":
-            return self._build_recursive_splitter(
+            split_docs = self._build_recursive_splitter(
                 separators=[
                     "\n# ",
                     "\n## ",
@@ -1077,6 +1103,11 @@ class VectorStoreManager:
                     "",
                 ]
             ).split_documents(documents)
+            for doc in split_docs:
+                doc.metadata["heading_path"] = self._extract_heading_path_from_content(
+                    doc.page_content
+                )
+            return split_docs
 
         return self._build_recursive_splitter().split_documents(documents)
 
@@ -1120,11 +1151,13 @@ class VectorStoreManager:
                     for hd in header_docs:
                         merged = dict(doc.metadata or {})
                         merged.update(hd.metadata or {})
-                        parent_chunks.extend(
-                            parent_splitter.split_documents(
-                                [LangChainDocument(page_content=hd.page_content, metadata=merged)]
-                            )
+                        heading_path = self._build_heading_path_from_metadata(merged)
+                        sub_parents = parent_splitter.split_documents(
+                            [LangChainDocument(page_content=hd.page_content, metadata=merged)]
                         )
+                        for sp in sub_parents:
+                            sp.metadata["heading_path"] = heading_path
+                        parent_chunks.extend(sub_parents)
                 else:
                     parent_chunks.extend(parent_splitter.split_documents([doc]))
         else:
@@ -1142,6 +1175,11 @@ class VectorStoreManager:
                 separators=separators,
             )
             parent_chunks = parent_splitter.split_documents(documents)
+            if strategy == "heading_aware":
+                for pc in parent_chunks:
+                    pc.metadata["heading_path"] = self._extract_heading_path_from_content(
+                        pc.page_content
+                    )
 
         # --- child-level splitter (simple recursive) ---
         child_size = params["child_chunk_size"]
@@ -1154,8 +1192,10 @@ class VectorStoreManager:
         child_chunks: List[LangChainDocument] = []
         for parent_idx, parent in enumerate(parent_chunks):
             children = child_splitter.split_documents([parent])
+            parent_heading_path = parent.metadata.get("heading_path", [])
             for child in children:
                 child.metadata["parent_index"] = parent_idx
+                child.metadata["heading_path"] = parent_heading_path
             child_chunks.extend(children)
 
         return parent_chunks, child_chunks
@@ -1339,17 +1379,20 @@ class VectorStoreManager:
         _, _, api_key = self._get_reranker_config()
         return api_key
 
-    @staticmethod
     def _composite_score(
-        rerank_score: float, rrf_score: float, source_weight: float = 1.0
+        self,
+        rerank_score: float,
+        rrf_score: float,
+        source_weight: float = 1.0,
     ) -> float:
         """复合评分：融合 Reranker 分数和 RRF 分数
 
-        权重：60% reranker + 30% RRF + 10% 来源权重
+        权重从全局配置读取，默认 60% reranker + 30% RRF + 10% 来源权重。
         """
-        return max(
-            0.0, min(1.0, 0.6 * rerank_score + 0.3 * rrf_score + 0.1 * source_weight)
-        )
+        rw = getattr(self.global_config, "reranker_weight", 0.6)
+        rrf_w = getattr(self.global_config, "rrf_weight", 0.3)
+        sw = 1.0 - rw - rrf_w
+        return max(0.0, min(1.0, rw * rerank_score + rrf_w * rrf_score + sw * source_weight))
 
     @staticmethod
     def _mmr_diversify(
@@ -1780,6 +1823,7 @@ class VectorStoreManager:
                         start_index=parent.metadata.get("start_index"),
                         end_index=parent.metadata.get("end_index"),
                         page_number=parent.metadata.get("page"),
+                        heading_path=parent.metadata.get("heading_path", []),
                     )
                 )
             DocumentChunk.objects.bulk_create(parent_db_objects)
@@ -1897,6 +1941,7 @@ class VectorStoreManager:
                         start_index=chunk.metadata.get("start_index"),
                         end_index=chunk.metadata.get("end_index"),
                         page_number=chunk.metadata.get("page"),
+                        heading_path=chunk.metadata.get("heading_path", []),
                     )
                 )
             DocumentChunk.objects.bulk_create(child_db_objects)
@@ -1927,6 +1972,7 @@ class VectorStoreManager:
                 start_index=chunk.metadata.get("start_index"),
                 end_index=chunk.metadata.get("end_index"),
                 page_number=chunk.metadata.get("page"),
+                heading_path=chunk.metadata.get("heading_path", []),
             )
             chunk_objects.append(chunk_obj)
 
@@ -2133,9 +2179,10 @@ class VectorStoreManager:
             formatted = self._format_fused_results(fused_results, score_threshold)
 
             # MMR 去冗余
-            if len(formatted) > 1:
-                formatted = self._mmr_diversify(formatted, k)
-                logger.info(f"🔀 MMR 去冗余后: {len(formatted)} 条结果")
+            if getattr(self.global_config, "enable_mmr", True) and len(formatted) > 1:
+                mmr_lambda = getattr(self.global_config, "mmr_lambda", 0.7)
+                formatted = self._mmr_diversify(formatted, k, lambda_param=mmr_lambda)
+                logger.info(f"🔀 MMR 去冗余后 (lambda={mmr_lambda}): {len(formatted)} 条结果")
 
             return formatted
 
@@ -2399,6 +2446,90 @@ class KnowledgeBaseService:
             logger.warning(f"Query Rewrite 失败: {e}")
         return None
 
+    def _generate_multi_queries(self, query: str, count: int = 3) -> List[str]:
+        """用 LLM 生成多个不同角度的查询变体"""
+        try:
+            from langgraph_integration.models import LLMConfig
+            from langchain_openai import ChatOpenAI
+            import json as _json
+
+            config = LLMConfig.objects.filter(is_active=True).first()
+            if not config:
+                return []
+
+            llm = ChatOpenAI(
+                model=config.name,
+                api_key=config.api_key,
+                base_url=config.api_url,
+                temperature=0.5,
+                max_tokens=300,
+                timeout=30,
+            )
+            response = llm.invoke(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"你是一个查询改写助手。请将用户的问题从 {count} 个不同角度重新表述，"
+                            "每个变体应关注不同的关键词或表达方式，但保持原始意图。"
+                            f"返回一个 JSON 数组，包含恰好 {count} 个字符串。只返回 JSON，不要其他内容。"
+                        ),
+                    },
+                    {"role": "user", "content": query},
+                ]
+            )
+            text = response.content.strip()
+            # 尝试提取 JSON 数组
+            start = text.find("[")
+            end = text.rfind("]") + 1
+            if start >= 0 and end > start:
+                variants = _json.loads(text[start:end])
+                variants = [str(v).strip() for v in variants if v and str(v).strip() != query]
+                logger.info(f"Multi-Query: '{query}' → {variants}")
+                return variants[:count]
+        except Exception as e:
+            logger.warning(f"Multi-Query 生成失败: {e}")
+        return []
+
+    def _generate_hypothetical_answer(self, query: str) -> Optional[str]:
+        """用 LLM 生成假想答案，用于 HyDE 检索"""
+        try:
+            from langgraph_integration.models import LLMConfig
+            from langchain_openai import ChatOpenAI
+
+            config = LLMConfig.objects.filter(is_active=True).first()
+            if not config:
+                return None
+
+            llm = ChatOpenAI(
+                model=config.name,
+                api_key=config.api_key,
+                base_url=config.api_url,
+                temperature=0.5,
+                max_tokens=300,
+                timeout=30,
+            )
+            response = llm.invoke(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是一个知识库助手。请根据用户的问题，写一段简洁、专业的回答。"
+                            "回答应使用知识库文档的风格，包含相关技术细节。"
+                            "只返回回答内容，不要解释。"
+                        ),
+                    },
+                    {"role": "user", "content": query},
+                ]
+            )
+            answer = response.content.strip()
+            if answer:
+                logger.info(f"HyDE 假想答案: '{query}' → {answer[:80]}...")
+                return answer
+        except Exception as e:
+            logger.warning(f"HyDE 假想答案生成失败: {e}")
+        return None
+
     @staticmethod
     def _concat_no_overlap(a: str, b: str) -> str:
         """拼接两段文本，自动去除重叠的后缀/前缀"""
@@ -2623,41 +2754,84 @@ class KnowledgeBaseService:
         query_text: str,
         top_k: int = 5,
         similarity_threshold: float = 0.5,
-        enable_rewrite: bool = True,
+        enable_rewrite: Optional[bool] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """统一检索增强入口：原始检索 + Query Rewrite 二次检索 + 多维度去重"""
-        results = self.vector_manager.similarity_search(
+        """统一检索增强入口：原始检索 + HyDE + Multi-Query / Query Rewrite + 多维度去重"""
+        gc = self.vector_manager.global_config
+
+        # --- 路径 1: 原始查询 ---
+        all_results = self.vector_manager.similarity_search(
             query_text,
             k=top_k,
             score_threshold=similarity_threshold,
             metadata_filter=metadata_filter,
         )
-        if enable_rewrite:
-            rewritten = self._rewrite_query(query_text)
-            if rewritten:
-                rewrite_results = self.vector_manager.similarity_search(
-                    rewritten,
+
+        # --- 路径 2: HyDE 假想答案 ---
+        if getattr(gc, "enable_hyde", False):
+            hypothetical = self._generate_hypothetical_answer(query_text)
+            if hypothetical:
+                hyde_results = self.vector_manager.similarity_search(
+                    hypothetical,
                     k=top_k,
                     score_threshold=similarity_threshold,
                     metadata_filter=metadata_filter,
                 )
-                seen = set()
-                for r in results:
-                    seen.update(self._dedup_keys(r))
-                for r in rewrite_results:
-                    keys = self._dedup_keys(r)
-                    if not any(k in seen for k in keys):
-                        results.append(r)
-                        seen.update(keys)
-                results.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
-                results = results[:top_k]
+                all_results = self._merge_dedup(all_results, hyde_results, top_k)
+
+        # --- 路径 3: Multi-Query 或 Query Rewrite ---
+        enable_multi = getattr(gc, "enable_multi_query", False)
+        if enable_multi:
+            count = min(max(getattr(gc, "multi_query_count", 3), 2), 5)
+            variants = self._generate_multi_queries(query_text, count)
+            for variant in variants:
+                variant_results = self.vector_manager.similarity_search(
+                    variant,
+                    k=top_k,
+                    score_threshold=similarity_threshold,
+                    metadata_filter=metadata_filter,
+                )
+                all_results = self._merge_dedup(all_results, variant_results, top_k)
+        else:
+            if enable_rewrite is None:
+                enable_rewrite = getattr(gc, "enable_query_rewrite", True)
+            if enable_rewrite:
+                rewritten = self._rewrite_query(query_text)
+                if rewritten:
+                    rewrite_results = self.vector_manager.similarity_search(
+                        rewritten,
+                        k=top_k,
+                        score_threshold=similarity_threshold,
+                        metadata_filter=metadata_filter,
+                    )
+                    all_results = self._merge_dedup(all_results, rewrite_results, top_k)
+
+        # --- 上下文扩展 ---
         params = self.vector_manager._get_effective_chunk_params()
         if params.get("parent_child_enabled"):
-            results = self._parent_child_expand(results)
+            all_results = self._parent_child_expand(all_results)
         else:
-            results = self._expand_context(results)
-        return results
+            all_results = self._expand_context(all_results)
+        return all_results
+
+    @staticmethod
+    def _merge_dedup(
+        base: List[Dict[str, Any]],
+        incoming: List[Dict[str, Any]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """合并两批检索结果，按多维度去重，按 score 排序后截断"""
+        seen = set()
+        for r in base:
+            seen.update(KnowledgeBaseService._dedup_keys(r))
+        for r in incoming:
+            keys = KnowledgeBaseService._dedup_keys(r)
+            if not any(k in seen for k in keys):
+                base.append(r)
+                seen.update(keys)
+        base.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
+        return base[:limit]
 
     def query(
         self,
@@ -2665,7 +2839,7 @@ class KnowledgeBaseService:
         top_k: int = 5,
         similarity_threshold: float = 0.5,
         user=None,
-        enable_rewrite: bool = True,
+        enable_rewrite: Optional[bool] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """查询知识库"""
@@ -2684,7 +2858,6 @@ class KnowledgeBaseService:
                 query_text,
                 top_k=top_k,
                 similarity_threshold=similarity_threshold,
-                enable_rewrite=enable_rewrite,
                 metadata_filter=metadata_filter,
             )
             retrieval_time = time.time() - retrieval_start
