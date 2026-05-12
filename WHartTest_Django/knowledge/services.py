@@ -1051,6 +1051,48 @@ class VectorStoreManager:
 
         return chunks
 
+    # ------------------------------------------------------------------
+    # Structure path helpers
+    # ------------------------------------------------------------------
+
+    def _detect_heading_context(self, content: str) -> str:
+        """Detect heading context from chunk content for heading_aware strategy.
+
+        Scans the first few lines for Markdown heading patterns and returns
+        a human-readable path like "标题1 > 标题2".
+        """
+        lines = content.strip().split("\n")
+        headings = []
+        for line in lines[:5]:
+            match = re.match(r"^(#{1,4})\s+(.+)", line.strip())
+            if match:
+                headings.append(match.group(2).strip())
+            elif line.strip():
+                break
+        return " > ".join(headings) if headings else ""
+
+    def _build_structure_path(
+        self, metadata: dict, content: str = "", strategy: str = ""
+    ) -> str:
+        """Build a human-readable structure path from chunk metadata or content.
+
+        For ``markdown_header`` strategy the path is extracted from the
+        ``h1``/``h2``/``h3``/``h4`` keys that ``MarkdownHeaderTextSplitter``
+        stores in metadata.  For ``heading_aware`` the path is detected by
+        scanning the chunk content for heading lines.
+        """
+        parts = []
+        for key in ("h1", "h2", "h3", "h4"):
+            val = metadata.get(key)
+            if val:
+                parts.append(val.strip())
+        if parts:
+            return " > ".join(parts)
+
+        if strategy == "heading_aware":
+            return self._detect_heading_context(content)
+        return ""
+
     def _split_documents(
         self, documents: List[LangChainDocument], document_obj: Document
     ) -> List[LangChainDocument]:
@@ -1769,6 +1811,7 @@ class VectorStoreManager:
             )
 
             # --- 1. Save parent chunks to PostgreSQL (no vectorisation) ---
+            strategy = self._get_chunk_strategy()
             parent_db_objects = []
             for i, parent in enumerate(parent_chunks):
                 parent_db_objects.append(
@@ -1780,6 +1823,9 @@ class VectorStoreManager:
                         start_index=parent.metadata.get("start_index"),
                         end_index=parent.metadata.get("end_index"),
                         page_number=parent.metadata.get("page"),
+                        structure_path=self._build_structure_path(
+                            parent.metadata, parent.page_content, strategy
+                        ),
                     )
                 )
             DocumentChunk.objects.bulk_create(parent_db_objects)
@@ -1897,6 +1943,9 @@ class VectorStoreManager:
                         start_index=chunk.metadata.get("start_index"),
                         end_index=chunk.metadata.get("end_index"),
                         page_number=chunk.metadata.get("page"),
+                        structure_path=self._build_structure_path(
+                            chunk.metadata, chunk.page_content, strategy
+                        ),
                     )
                 )
             DocumentChunk.objects.bulk_create(child_db_objects)
@@ -1913,6 +1962,7 @@ class VectorStoreManager:
         document_obj: Document,
     ):
         """保存分块信息到数据库"""
+        strategy = self._get_chunk_strategy()
         chunk_objects = []
         for i, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
             # 计算内容哈希
@@ -1927,6 +1977,9 @@ class VectorStoreManager:
                 start_index=chunk.metadata.get("start_index"),
                 end_index=chunk.metadata.get("end_index"),
                 page_number=chunk.metadata.get("page"),
+                structure_path=self._build_structure_path(
+                    chunk.metadata, chunk.page_content, strategy
+                ),
             )
             chunk_objects.append(chunk_obj)
 

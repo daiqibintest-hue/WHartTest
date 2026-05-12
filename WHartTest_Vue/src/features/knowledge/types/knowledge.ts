@@ -202,6 +202,7 @@ export interface DocumentChunk {
   created_at: string;
   parent_chunk?: string;
   chunk_level: 'parent' | 'child';
+  structure_path?: string;
 }
 
 /**

@@ -46,7 +46,7 @@ load_env_file() {
     echo "检测到环境文件: $ENV_FILE"
     set -a
     # shellcheck disable=SC1090
-    source <(sed 's/\r$//' "$ENV_FILE")
+    source "$ENV_FILE"
     set +a
   fi
 }
@@ -1528,7 +1528,11 @@ run_local_mode() {
     up_args+=(--force-recreate)
   fi
 
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" build "${build_args[@]}"
+  if [ "${#build_args[@]}" -gt 0 ]; then
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" build "${build_args[@]}"
+  else
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" build
+  fi
 
   echo "启动容器（本地构建模式）..."
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up "${up_args[@]}"
@@ -1541,7 +1545,7 @@ collect_status_and_logs() {
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" ps
 
   for svc in "${services[@]}"; do
-    echo "--- 日志: $svc（最近 200 行）---"
+    echo "--- 日志: ${svc}（最近 200 行）---"
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail 200 "$svc" | tee "$LOG_DIR/$svc.log" || true
   done
 

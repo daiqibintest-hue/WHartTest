@@ -107,11 +107,72 @@
             />
           </div>
 
-          <div class="chunks-list">
+          <!-- Parent-Child grouped view -->
+          <div v-if="hasParentChildChunks" class="chunks-list">
+            <template v-for="group in groupedChunks" :key="group.parent.id">
+              <div class="chunk-item chunk-parent">
+                <div class="chunk-header">
+                  <span class="chunk-index">分块 #{{ group.parent.chunk_index + 1 }}</span>
+                  <a-tag color="blue" size="small">Parent</a-tag>
+                  <span class="chunk-length">{{ group.parent.content.length }} 字符</span>
+                  <span v-if="group.parent.structure_path" class="chunk-structure-path">
+                    {{ group.parent.structure_path }}
+                  </span>
+                  <span v-if="group.parent.start_index !== null && group.parent.end_index !== null" class="chunk-range">
+                    位置: {{ group.parent.start_index }} - {{ group.parent.end_index }}
+                  </span>
+                  <span v-if="group.parent.page_number" class="chunk-page">页码: {{ group.parent.page_number }}</span>
+                </div>
+                <div class="chunk-content">
+                  <pre>{{ group.parent.content }}</pre>
+                </div>
+              </div>
+              <div v-for="child in group.children" :key="child.id" class="chunk-item chunk-child">
+                <div class="chunk-header">
+                  <span class="chunk-index">分块 #{{ child.chunk_index + 1 }}</span>
+                  <a-tag color="green" size="small">Child</a-tag>
+                  <span class="chunk-length">{{ child.content.length }} 字符</span>
+                  <span v-if="child.structure_path" class="chunk-structure-path">
+                    {{ child.structure_path }}
+                  </span>
+                  <span v-if="child.start_index !== null && child.end_index !== null" class="chunk-range">
+                    位置: {{ child.start_index }} - {{ child.end_index }}
+                  </span>
+                  <span v-if="child.page_number" class="chunk-page">页码: {{ child.page_number }}</span>
+                </div>
+                <div class="chunk-content">
+                  <pre>{{ child.content }}</pre>
+                </div>
+              </div>
+            </template>
+            <!-- Orphan children (parent not in current page) -->
+            <div v-for="child in orphanChildren" :key="child.id" class="chunk-item chunk-child">
+              <div class="chunk-header">
+                <span class="chunk-index">分块 #{{ child.chunk_index + 1 }}</span>
+                <a-tag color="green" size="small">Child</a-tag>
+                <a-tag v-if="child.parent_chunk" color="gray" size="small">
+                  所属 Parent: #{{ getParentIndex(child.parent_chunk) + 1 }}
+                </a-tag>
+                <span class="chunk-length">{{ child.content.length }} 字符</span>
+                <span v-if="child.structure_path" class="chunk-structure-path">
+                  {{ child.structure_path }}
+                </span>
+              </div>
+              <div class="chunk-content">
+                <pre>{{ child.content }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Flat chunk view (no parent-child) -->
+          <div v-else class="chunks-list">
             <div v-for="chunk in documentContent.chunks.items" :key="chunk.id" class="chunk-item">
               <div class="chunk-header">
                 <span class="chunk-index">分块 #{{ chunk.chunk_index + 1 }}</span>
                 <span class="chunk-length">{{ chunk.content.length }} 字符</span>
+                <span v-if="chunk.structure_path" class="chunk-structure-path">
+                  {{ chunk.structure_path }}
+                </span>
                 <span v-if="chunk.start_index !== null && chunk.end_index !== null" class="chunk-range">
                   位置: {{ chunk.start_index }} - {{ chunk.end_index }}
                 </span>
@@ -140,7 +201,7 @@
 import { computed, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { KnowledgeService } from '../services/knowledgeService';
-import type { DocumentContentResponse } from '../types/knowledge';
+import type { DocumentChunk, DocumentContentResponse } from '../types/knowledge';
 
 interface Props {
   visible: boolean;
@@ -165,6 +226,50 @@ const showChunks = computed(() => {
   const chunkCount = documentContent.value.chunks?.total_count ?? documentContent.value.chunk_count ?? 0;
   return chunkCount > 0;
 });
+
+// Parent-Child grouping logic
+const hasParentChildChunks = computed(() => {
+  if (!documentContent.value?.chunks?.items) return false;
+  return documentContent.value.chunks.items.some((c) => c.chunk_level === 'parent');
+});
+
+interface ChunkGroup {
+  parent: DocumentChunk;
+  children: DocumentChunk[];
+}
+
+const groupedChunks = computed<ChunkGroup[]>(() => {
+  const items = documentContent.value?.chunks?.items;
+  if (!items) return [];
+  const parents = items.filter((c) => c.chunk_level === 'parent');
+  const children = items.filter((c) => c.chunk_level === 'child');
+  const childMap = new Map<string, DocumentChunk[]>();
+  for (const child of children) {
+    if (child.parent_chunk) {
+      const list = childMap.get(child.parent_chunk) || [];
+      list.push(child);
+      childMap.set(child.parent_chunk, list);
+    }
+  }
+  return parents.map((p) => ({
+    parent: p,
+    children: childMap.get(p.id) || [],
+  }));
+});
+
+const orphanChildren = computed(() => {
+  const items = documentContent.value?.chunks?.items;
+  if (!items) return [];
+  const parentIds = new Set(items.filter((c) => c.chunk_level === 'parent').map((c) => c.id));
+  return items.filter((c) => c.chunk_level === 'child' && c.parent_chunk && !parentIds.has(c.parent_chunk));
+});
+
+// Build a chunk_index lookup from all known chunks (including previously loaded pages)
+const chunkIndexCache = ref<Map<string, number>>(new Map());
+
+const getParentIndex = (parentId: string): number => {
+  return chunkIndexCache.value.get(parentId) ?? 0;
+};
 
 const formatDate = (dateString: string) => new Date(dateString).toLocaleString();
 
@@ -230,6 +335,12 @@ const fetchDocumentContent = async (documentId: string) => {
       chunk_page_size: chunkPagination.value.pageSize,
     });
     documentContent.value = response;
+    // Populate chunk index cache for parent-child lookup
+    if (response.chunks?.items) {
+      for (const chunk of response.chunks.items) {
+        chunkIndexCache.value.set(chunk.id, chunk.chunk_index);
+      }
+    }
   } catch (error) {
     console.error('获取文档内容失败:', error);
     Message.error('获取文档内容失败');
@@ -286,6 +397,7 @@ watch(
       documentContent.value = null;
       includeChunks.value = false;
       chunkPagination.value = { current: 1, pageSize: 10 };
+      chunkIndexCache.value = new Map();
     }
   }
 );
@@ -428,5 +540,21 @@ watch(
 
 .chunk-content {
   padding: 12px;
+}
+
+.chunk-parent {
+  border-left: 3px solid #165dff;
+}
+
+.chunk-child {
+  margin-left: 24px;
+  border-left: 3px solid #00b42a;
+  background-color: color-mix(in srgb, var(--theme-surface-soft) 90%, #00b42a 10%);
+}
+
+.chunk-structure-path {
+  font-size: 12px;
+  color: #86909c;
+  font-style: italic;
 }
 </style>

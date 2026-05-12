@@ -207,7 +207,7 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             'id', 'document', 'document_title', 'chunk_index',
             'content', 'vector_id', 'embedding_hash',
             'start_index', 'end_index', 'page_number', 'created_at',
-            'parent_chunk', 'chunk_level',
+            'parent_chunk', 'chunk_level', 'structure_path',
         ]
         read_only_fields = ['id', 'created_at']
 

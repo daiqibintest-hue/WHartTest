@@ -621,6 +621,9 @@ class DocumentViewSet(BaseModelViewSet):
                         "start_index": chunk.start_index,
                         "end_index": chunk.end_index,
                         "page_number": chunk.page_number,
+                        "chunk_level": chunk.chunk_level,
+                        "parent_chunk": str(chunk.parent_chunk_id) if chunk.parent_chunk_id else None,
+                        "structure_path": chunk.structure_path or "",
                     }
                     for chunk in chunk_list
                 ],

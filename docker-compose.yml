@@ -50,11 +50,11 @@ services:
 
   # 后端 Django 服务（包含Celery Worker和Beat）
   backend:
-    image: ${DOCKER_BACKEND_IMAGE:-ghcr.io/mgdaaslab/wharttest-backend:latest}
-    # 如果需要本地构建，注释掉上面的image行，取消注释下面的build部分
-    # build:
-    #   context: ./WHartTest_Django
-    #   dockerfile: Dockerfile
+    # image: ${DOCKER_BACKEND_IMAGE:-ghcr.io/mgdaaslab/wharttest-backend:latest}
+    # 本地构建后端镜像
+    build:
+      context: ./WHartTest_Django
+      dockerfile: Dockerfile
     container_name: wharttest-backend
     # 启动逻辑已移至 Dockerfile 的 ENTRYPOINT 和 supervisord.conf
     ports:
@@ -270,43 +270,6 @@ services:
       resources:
         limits:
           memory: 4G
-
-  # Xinference 模型推理服务（Embedding + Reranker）
-  # xinference:
-  #   image: xprobe/xinference:latest-cpu
-  #   container_name: wharttest-xinference
-  #   ports:
-  #     - "8917:9997"
-  #   volumes:
-  #     - xinference-data:/root/.xinference
-  #     - xinference-cache:/root/.cache/huggingface
-  #   environment:
-  #     - HF_ENDPOINT=https://hf-mirror.com
-  #   networks:
-  #     - wharttest-network
-  #   restart: unless-stopped
-  #   command: xinference-local -H 0.0.0.0
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:9997/"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 60s
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 4G
-    # 启动后需要部署模型:
-    # Embedding 模型
-# curl -X POST "http://localhost:8917/v1/models" \
-#   -H "Content-Type: application/json" \
-#   -d '{"model_name": "bge-m3", "model_type": "embedding", "model_uid": "bge-m3"}'
-
-# # Reranker 模型
-# curl -X POST "http://localhost:8917/v1/models" \
-#   -H "Content-Type: application/json" \
-#   -d '{"model_name": "bge-reranker-v2-m3", "model_type": "rerank", "model_uid": "bge-reranker-v2-m3"}'
-
 networks:
   wharttest-network:
     driver: bridge

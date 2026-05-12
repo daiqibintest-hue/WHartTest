@@ -191,11 +191,10 @@ RUN set -eux; \
       find "$browser_root" -maxdepth 4 -type f \( -name "LICENSE*" -o -name "COPYING*" -o -name "NOTICE*" -o -name "ABOUT" \) -exec cp --parents -f {} /app/third_party_licenses/playwright-browsers/ \; ; \
     fi
 
-# 安装 agent-browser CLI 工具及其浏览器
+# 安装 agent-browser CLI 工具；浏览器复用上面已安装的 Playwright Chromium
 # agent-browser 是 AI Agent 专用的浏览器自动化工具
 RUN npm config set registry "${NPM_REGISTRY}" && \
-    npm install -g agent-browser && \
-    agent-browser install
+    npm install -g agent-browser
 
 # 从构建阶段复制预下载的 BM25 模型缓存
 COPY --from=builder /root/.cache/fastembed /root/.cache/fastembed

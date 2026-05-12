@@ -288,6 +288,34 @@
       </a-form>
     </a-spin>
   </a-modal>
+
+  <!-- Reprocess confirmation dialog -->
+  <a-modal
+    :visible="showReprocessConfirm"
+    title="切分策略已变更"
+    :closable="!reprocessing"
+    :mask-closable="false"
+    :ok-text="reprocessing ? '处理中...' : '立即重处理'"
+    :cancel-text="reprocessing ? '' : '跳过'"
+    :ok-loading="reprocessing"
+    @ok="handleBatchReprocess"
+    @cancel="handleSkipReprocess"
+  >
+    <a-alert type="warning" style="margin-bottom: 12px">
+      切分策略已从「{{ getStrategyLabel(originalChunkStrategy) }}」变更为「{{ getStrategyLabel(formData.chunk_strategy || 'recursive_character') }}」。
+      历史文档的分块仍使用旧策略，需要重新处理才能生效。
+    </a-alert>
+    <p>是否立即对所有知识库的文档进行批量重处理？</p>
+    <div v-if="reprocessing" style="margin-top: 16px">
+      <a-progress
+        :percent="reprocessProgress ? Math.round((reprocessProgress.completed / reprocessProgress.total) * 100) : 0"
+        :status="reprocessProgress?.completed === reprocessProgress?.total ? 'success' : 'normal'"
+      />
+      <p style="margin-top: 8px; color: #86909c; font-size: 13px">
+        正在提交重处理任务：{{ reprocessProgress?.completed || 0 }} / {{ reprocessProgress?.total || 0 }}
+      </p>
+    </div>
+  </a-modal>
 </template>
 
 <script setup lang="ts">
@@ -323,6 +351,12 @@ const hasSavedApiKey = ref(false);
 const hasSavedRerankerApiKey = ref(false);
 const apiKeyTouched = ref(false);
 const rerankerApiKeyTouched = ref(false);
+
+// Strategy change detection & reprocess
+const originalChunkStrategy = ref<string>('recursive_character');
+const showReprocessConfirm = ref(false);
+const reprocessing = ref(false);
+const reprocessProgress = ref<{ completed: number; total: number } | null>(null);
 
 const windowWidth = ref(window.innerWidth);
 const updateWindowWidth = () => {
@@ -430,6 +464,7 @@ const fetchData = async () => {
     hasSavedRerankerApiKey.value = !!config.reranker_api_key;
     apiKeyTouched.value = false;
     rerankerApiKeyTouched.value = false;
+    originalChunkStrategy.value = config.chunk_strategy || 'recursive_character';
     Object.assign(formData, {
       ...config,
       api_key: '',
@@ -616,14 +651,63 @@ const handleSubmit = async () => {
 
     await KnowledgeService.updateGlobalConfig(payload);
     Message.success('配置保存成功');
-    emit('saved');
-    emit('close');
+
+    const strategyChanged = formData.chunk_strategy !== originalChunkStrategy.value;
+    if (strategyChanged) {
+      showReprocessConfirm.value = true;
+    } else {
+      emit('saved');
+      emit('close');
+    }
   } catch (error: any) {
     console.error('保存配置失败:', error);
     Message.error(error?.message || '保存配置失败');
   } finally {
     loading.value = false;
   }
+};
+
+const getStrategyLabel = (strategy: string) => {
+  const labels: Record<string, string> = {
+    recursive_character: '固定长度',
+    heading_aware: '结构优先',
+    markdown_header: 'Markdown 标题',
+  };
+  return labels[strategy] || strategy;
+};
+
+const handleBatchReprocess = async () => {
+  reprocessing.value = true;
+  try {
+    const kbResponse = await KnowledgeService.getKnowledgeBases();
+    const kbs = Array.isArray(kbResponse) ? kbResponse : kbResponse.results;
+
+    reprocessProgress.value = { completed: 0, total: kbs.length };
+
+    for (const kb of kbs) {
+      try {
+        await KnowledgeService.reprocessKnowledgeBaseDocuments(kb.id);
+      } catch (e) {
+        console.error(`Failed to reprocess KB ${kb.name}:`, e);
+      }
+      reprocessProgress.value.completed++;
+    }
+
+    Message.success(`已提交 ${kbs.length} 个知识库的重处理任务`);
+  } catch (error) {
+    Message.error('批量重处理失败');
+  } finally {
+    reprocessing.value = false;
+    showReprocessConfirm.value = false;
+    emit('saved');
+    emit('close');
+  }
+};
+
+const handleSkipReprocess = () => {
+  showReprocessConfirm.value = false;
+  emit('saved');
+  emit('close');
 };
 
 const handleCancel = () => {

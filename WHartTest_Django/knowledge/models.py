@@ -357,6 +357,16 @@ class DocumentChunk(models.Model):
         choices=CHUNK_LEVEL_CHOICES,
         default="child",
     )
+    structure_path = models.TextField(
+        _("Structure path"),
+        blank=True,
+        default="",
+        help_text=_(
+            "Hierarchical path derived from document structure. "
+            "For markdown_header: 'h1 > h2 > h3'. "
+            "For heading_aware: detected heading context."
+        ),
+    )
 
     class Meta:
         verbose_name = _("Document chunk")
