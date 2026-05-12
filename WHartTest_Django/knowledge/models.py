@@ -92,13 +92,13 @@ class KnowledgeGlobalConfig(models.Model):
         help_text=_("Model name used for reranking."),
     )
 
-    chunk_size = models.PositiveIntegerField(_("Chunk size"), default=1000)
-    chunk_overlap = models.PositiveIntegerField(_("Chunk overlap"), default=200)
+    chunk_size = models.PositiveIntegerField(_("Chunk size"), default=800)
+    chunk_overlap = models.PositiveIntegerField(_("Chunk overlap"), default=150)
     chunk_strategy = models.CharField(
         _("Chunk strategy"),
         max_length=50,
         choices=CHUNK_STRATEGY_CHOICES,
-        default="recursive_character",
+        default="heading_aware",
         help_text=_("Default chunking strategy for new or reprocessed documents."),
     )
 
@@ -217,8 +217,8 @@ class KnowledgeBase(models.Model):
     is_active = models.BooleanField(_("Is active"), default=True)
     created_at = models.DateTimeField(_("Created at"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Updated at"), auto_now=True)
-    chunk_size = models.PositiveIntegerField(_("Chunk size"), default=1000)
-    chunk_overlap = models.PositiveIntegerField(_("Chunk overlap"), default=200)
+    chunk_size = models.PositiveIntegerField(_("Chunk size"), default=800)
+    chunk_overlap = models.PositiveIntegerField(_("Chunk overlap"), default=150)
     parent_chunk_size = models.PositiveIntegerField(
         _("Parent chunk size"), null=True, blank=True,
         help_text=_("Override global parent chunk size. Null uses global default."),

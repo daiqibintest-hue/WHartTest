@@ -117,8 +117,8 @@ const formData = reactive<CreateKnowledgeBaseRequest>({
   name: '',
   description: '',
   project: 0,
-  chunk_size: 1000,
-  chunk_overlap: 200,
+  chunk_size: 800,
+  chunk_overlap: 150,
   is_active: true,
 });
 
@@ -190,8 +190,8 @@ const resetForm = () => {
     name: '',
     description: '',
     project: 0,
-    chunk_size: 1000,
-    chunk_overlap: 200,
+    chunk_size: 800,
+    chunk_overlap: 150,
     is_active: true,
   });
   formRef.value?.clearValidate();

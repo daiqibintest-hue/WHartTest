@@ -988,9 +988,9 @@ class VectorStoreManager:
 
     def _get_chunk_strategy(self) -> str:
         """Return the effective chunk strategy for the current indexing run."""
-        strategy = getattr(self.global_config, "chunk_strategy", None) or "recursive_character"
+        strategy = getattr(self.global_config, "chunk_strategy", None) or "heading_aware"
         if strategy not in {"recursive_character", "heading_aware", "markdown_header"}:
-            return "recursive_character"
+            return "heading_aware"
         return strategy
 
     def _get_effective_chunk_params(self) -> dict:
