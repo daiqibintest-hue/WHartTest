@@ -623,7 +623,7 @@ class DocumentViewSet(BaseModelViewSet):
                         "page_number": chunk.page_number,
                         "chunk_level": chunk.chunk_level,
                         "parent_chunk": str(chunk.parent_chunk_id) if chunk.parent_chunk_id else None,
-                        "structure_path": chunk.structure_path or "",
+                        "heading_path": chunk.heading_path or [],
                     }
                     for chunk in chunk_list
                 ],

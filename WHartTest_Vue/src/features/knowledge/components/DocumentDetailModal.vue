@@ -115,8 +115,8 @@
                   <span class="chunk-index">分块 #{{ group.parent.chunk_index + 1 }}</span>
                   <a-tag color="blue" size="small">Parent</a-tag>
                   <span class="chunk-length">{{ group.parent.content.length }} 字符</span>
-                  <span v-if="group.parent.structure_path" class="chunk-structure-path">
-                    {{ group.parent.structure_path }}
+                  <span v-if="group.parent.heading_path?.length" class="chunk-heading-path">
+                    {{ group.parent.heading_path.join(' > ') }}
                   </span>
                   <span v-if="group.parent.start_index !== null && group.parent.end_index !== null" class="chunk-range">
                     位置: {{ group.parent.start_index }} - {{ group.parent.end_index }}
@@ -132,8 +132,8 @@
                   <span class="chunk-index">分块 #{{ child.chunk_index + 1 }}</span>
                   <a-tag color="green" size="small">Child</a-tag>
                   <span class="chunk-length">{{ child.content.length }} 字符</span>
-                  <span v-if="child.structure_path" class="chunk-structure-path">
-                    {{ child.structure_path }}
+                  <span v-if="child.heading_path?.length" class="chunk-heading-path">
+                    {{ child.heading_path.join(' > ') }}
                   </span>
                   <span v-if="child.start_index !== null && child.end_index !== null" class="chunk-range">
                     位置: {{ child.start_index }} - {{ child.end_index }}
@@ -154,8 +154,8 @@
                   所属 Parent: #{{ getParentIndex(child.parent_chunk) + 1 }}
                 </a-tag>
                 <span class="chunk-length">{{ child.content.length }} 字符</span>
-                <span v-if="child.structure_path" class="chunk-structure-path">
-                  {{ child.structure_path }}
+                <span v-if="child.heading_path?.length" class="chunk-heading-path">
+                  {{ child.heading_path.join(' > ') }}
                 </span>
               </div>
               <div class="chunk-content">
@@ -169,14 +169,19 @@
             <div v-for="chunk in documentContent.chunks.items" :key="chunk.id" class="chunk-item">
               <div class="chunk-header">
                 <span class="chunk-index">分块 #{{ chunk.chunk_index + 1 }}</span>
+                <a-tag v-if="chunk.chunk_level === 'parent'" color="blue" size="small">Parent</a-tag>
+                <a-tag v-else-if="chunk.chunk_level === 'child'" color="green" size="small">Child</a-tag>
                 <span class="chunk-length">{{ chunk.content.length }} 字符</span>
-                <span v-if="chunk.structure_path" class="chunk-structure-path">
-                  {{ chunk.structure_path }}
+                <span v-if="chunk.heading_path?.length" class="chunk-heading-path">
+                  {{ chunk.heading_path.join(' > ') }}
                 </span>
                 <span v-if="chunk.start_index !== null && chunk.end_index !== null" class="chunk-range">
                   位置: {{ chunk.start_index }} - {{ chunk.end_index }}
                 </span>
                 <span v-if="chunk.page_number" class="chunk-page">页码: {{ chunk.page_number }}</span>
+                <span v-if="chunk.heading_path?.length" class="chunk-heading-path">
+                  {{ chunk.heading_path.join(' > ') }}
+                </span>
               </div>
               <div class="chunk-content">
                 <pre>{{ chunk.content }}</pre>
@@ -538,6 +543,11 @@ watch(
   color: var(--theme-text);
 }
 
+.chunk-heading-path {
+  color: #86909c;
+  font-style: italic;
+}
+
 .chunk-content {
   padding: 12px;
 }
@@ -550,11 +560,5 @@ watch(
   margin-left: 24px;
   border-left: 3px solid #00b42a;
   background-color: color-mix(in srgb, var(--theme-surface-soft) 90%, #00b42a 10%);
-}
-
-.chunk-structure-path {
-  font-size: 12px;
-  color: #86909c;
-  font-style: italic;
 }
 </style>

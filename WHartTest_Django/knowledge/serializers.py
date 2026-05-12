@@ -21,6 +21,9 @@ class KnowledgeGlobalConfigSerializer(serializers.ModelSerializer):
             'chunk_size', 'chunk_overlap', 'chunk_strategy',
             'parent_child_enabled', 'parent_chunk_size', 'parent_chunk_overlap',
             'child_chunk_size', 'child_chunk_overlap',
+            'enable_query_rewrite', 'enable_mmr', 'mmr_lambda',
+            'reranker_weight', 'rrf_weight',
+            'enable_multi_query', 'multi_query_count', 'enable_hyde',
             'updated_at', 'updated_by', 'updated_by_name'
         ]
         read_only_fields = ['updated_at', 'updated_by']
@@ -207,7 +210,7 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             'id', 'document', 'document_title', 'chunk_index',
             'content', 'vector_id', 'embedding_hash',
             'start_index', 'end_index', 'page_number', 'created_at',
-            'parent_chunk', 'chunk_level', 'structure_path',
+            'parent_chunk', 'chunk_level', 'heading_path',
         ]
         read_only_fields = ['id', 'created_at']
 

@@ -131,6 +131,43 @@ class KnowledgeGlobalConfig(models.Model):
         help_text=_("Character overlap between child chunks."),
     )
 
+    enable_query_rewrite = models.BooleanField(
+        _("Enable query rewrite"), default=True,
+        help_text=_("Use LLM to rewrite the query for better retrieval."),
+    )
+    enable_mmr = models.BooleanField(
+        _("Enable MMR"), default=True,
+        help_text=_("Apply Maximal Marginal Relevance diversification to reduce redundancy."),
+    )
+    mmr_lambda = models.FloatField(
+        _("MMR lambda"), default=0.7,
+        help_text=_("MMR diversity parameter: 0 = pure diversity, 1 = pure relevance."),
+    )
+    reranker_weight = models.FloatField(
+        _("Reranker weight"), default=0.6,
+        help_text=_("Weight of the reranker score in the composite scoring formula."),
+    )
+    rrf_weight = models.FloatField(
+        _("RRF weight"), default=0.3,
+        help_text=_("Weight of the RRF fusion score in the composite scoring formula."),
+    )
+
+    enable_multi_query = models.BooleanField(
+        _("Enable multi-query"), default=False,
+        help_text=_("Use LLM to generate multiple query variants for broader recall."),
+    )
+    multi_query_count = models.PositiveIntegerField(
+        _("Multi-query count"), default=3,
+        help_text=_("Number of query variants to generate (2-5)."),
+    )
+    enable_hyde = models.BooleanField(
+        _("Enable HyDE"), default=False,
+        help_text=_(
+            "Use LLM to generate a hypothetical answer, then search with its embedding "
+            "instead of the original query."
+        ),
+    )
+
     updated_at = models.DateTimeField(_("Updated at"), auto_now=True)
     updated_by = models.ForeignKey(
         User,
@@ -357,14 +394,10 @@ class DocumentChunk(models.Model):
         choices=CHUNK_LEVEL_CHOICES,
         default="child",
     )
-    structure_path = models.TextField(
-        _("Structure path"),
-        blank=True,
-        default="",
+    heading_path = models.JSONField(
+        _("Heading path"), default=list, blank=True,
         help_text=_(
-            "Hierarchical path derived from document structure. "
-            "For markdown_header: 'h1 > h2 > h3'. "
-            "For heading_aware: detected heading context."
+            "Structural heading path, e.g. ['H1 title', 'H2 title', 'H3 title']."
         ),
     )
 

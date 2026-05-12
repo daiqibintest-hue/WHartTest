@@ -136,6 +136,14 @@
 
         <a-divider>默认切分配置</a-divider>
 
+        <a-alert
+          v-if="formData.chunk_strategy !== savedChunkStrategy"
+          type="warning"
+          style="margin-bottom: 12px"
+        >
+          切分策略已变更，保存后需要对历史文档执行「重新处理」才能生效。
+        </a-alert>
+
         <a-row :gutter="16">
           <a-col :xs="24" :sm="12">
             <a-form-item field="chunk_strategy">
@@ -279,6 +287,136 @@
           </a-row>
         </template>
 
+        <a-divider>查询增强配置</a-divider>
+
+        <a-row :gutter="16">
+          <a-col :xs="24" :sm="12">
+            <a-form-item field="enable_query_rewrite">
+              <template #label>
+                查询改写
+                <a-tooltip content="开启后，检索前会使用 LLM 对用户查询做改写，提升召回质量。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-switch v-model="formData.enable_query_rewrite" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item field="enable_mmr">
+              <template #label>
+                MMR 多样性去重
+                <a-tooltip content="开启后，使用 Maximal Marginal Relevance 对检索结果做多样性过滤，减少冗余。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-switch v-model="formData.enable_mmr" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row :gutter="16">
+          <a-col :xs="24" :sm="8">
+            <a-form-item field="mmr_lambda">
+              <template #label>
+                MMR Lambda
+                <a-tooltip content="控制相关性与多样性的平衡。0 = 纯多样性，1 = 纯相关性。建议 0.5-0.8。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-input-number
+                v-model="formData.mmr_lambda"
+                :min="0"
+                :max="1"
+                :step="0.1"
+                :precision="1"
+                style="width: 100%"
+                :disabled="!formData.enable_mmr"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="8">
+            <a-form-item field="reranker_weight">
+              <template #label>
+                Reranker 权重
+                <a-tooltip content="Reranker 分数在综合评分中的权重。与 RRF 权重之和应小于 1。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-input-number
+                v-model="formData.reranker_weight"
+                :min="0"
+                :max="1"
+                :step="0.1"
+                :precision="1"
+                style="width: 100%"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="8">
+            <a-form-item field="rrf_weight">
+              <template #label>
+                RRF 权重
+                <a-tooltip content="RRF 融合分数在综合评分中的权重。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-input-number
+                v-model="formData.rrf_weight"
+                :min="0"
+                :max="1"
+                :step="0.1"
+                :precision="1"
+                style="width: 100%"
+              />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row :gutter="16">
+          <a-col :xs="24" :sm="12">
+            <a-form-item field="enable_multi_query">
+              <template #label>
+                多路查询
+                <a-tooltip content="开启后，LLM 会将问题改写为多个不同角度的查询，分别检索后合并结果，提升召回覆盖率。开启后自动替代单次查询改写。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-switch v-model="formData.enable_multi_query" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item field="enable_hyde">
+              <template #label>
+                HyDE 假想答案
+                <a-tooltip content="开启后，LLM 会先生成一段假想答案，用答案的语义去做检索。假想答案是陈述式文本，与知识库文档更接近，能提升召回质量。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-switch v-model="formData.enable_hyde" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row v-if="formData.enable_multi_query" :gutter="16">
+          <a-col :xs="24" :sm="12">
+            <a-form-item field="multi_query_count">
+              <template #label>
+                变体数量
+                <a-tooltip content="生成的查询变体数量，2-5 个。变体越多召回越广，但 LLM 调用开销也越大。">
+                  <icon-question-circle class="label-tip-icon" />
+                </a-tooltip>
+              </template>
+              <a-input-number
+                v-model="formData.multi_query_count"
+                :min="2"
+                :max="5"
+                :step="1"
+                style="width: 100%"
+              />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
         <div v-if="formData.updated_by_name" class="config-meta">
           <a-space>
             <span>最后更新：{{ formData.updated_by_name }}</span>
@@ -349,6 +487,7 @@ const testingConnection = ref(false);
 const testingReranker = ref(false);
 const hasSavedApiKey = ref(false);
 const hasSavedRerankerApiKey = ref(false);
+const savedChunkStrategy = ref('');
 const apiKeyTouched = ref(false);
 const rerankerApiKeyTouched = ref(false);
 
@@ -384,6 +523,14 @@ const formData = reactive<KnowledgeGlobalConfig>({
   parent_chunk_overlap: 200,
   child_chunk_size: 800,
   child_chunk_overlap: 200,
+  enable_query_rewrite: true,
+  enable_mmr: true,
+  mmr_lambda: 0.7,
+  reranker_weight: 0.6,
+  rrf_weight: 0.3,
+  enable_multi_query: false,
+  multi_query_count: 3,
+  enable_hyde: false,
   updated_at: '',
   updated_by_name: '',
 });
@@ -453,6 +600,15 @@ watch(
   }
 );
 
+watch(
+  () => formData.enable_multi_query,
+  (val) => {
+    if (val) {
+      formData.enable_query_rewrite = false;
+    }
+  }
+);
+
 const fetchData = async () => {
   fetchLoading.value = true;
   try {
@@ -470,6 +626,7 @@ const fetchData = async () => {
       api_key: '',
       reranker_api_key: '',
     });
+    savedChunkStrategy.value = config.chunk_strategy || 'recursive_character';
   } catch (error) {
     console.error('获取配置失败:', error);
     Message.error('获取配置失败');
@@ -641,6 +798,14 @@ const handleSubmit = async () => {
       parent_chunk_overlap: formData.parent_chunk_overlap,
       child_chunk_size: formData.child_chunk_size,
       child_chunk_overlap: formData.child_chunk_overlap,
+      enable_query_rewrite: formData.enable_query_rewrite,
+      enable_mmr: formData.enable_mmr,
+      mmr_lambda: formData.mmr_lambda,
+      reranker_weight: formData.reranker_weight,
+      rrf_weight: formData.rrf_weight,
+      enable_multi_query: formData.enable_multi_query,
+      multi_query_count: formData.multi_query_count,
+      enable_hyde: formData.enable_hyde,
     };
     if (apiKeyTouched.value) {
       payload.api_key = formData.api_key;
