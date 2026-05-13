@@ -8,6 +8,7 @@
 """
 
 from .skill_tools import get_skill_tools
+from .human_tools import get_human_tools
 
 import logging
 
@@ -22,6 +23,10 @@ def get_builtin_tools(
 ) -> list:
     """获取所有内置工具"""
     tools = []
+
+    human_tools = get_human_tools()
+    tools.extend(human_tools)
+    logger.info(f"[BuiltinTools] 加载 {len(human_tools)} 个人机交互兼容工具")
 
     skill_tools = get_skill_tools(
         user_id=user_id,

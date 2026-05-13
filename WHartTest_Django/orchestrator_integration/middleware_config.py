@@ -822,6 +822,8 @@ DEFAULT_HIGH_RISK_TOOLS = {
     },
 }
 
+SAFE_ALWAYS_ALLOWED_TOOLS = {"ask_human"}
+
 
 def get_mcp_hitl_tools() -> Dict[str, Any]:
     """
@@ -925,6 +927,10 @@ def build_dynamic_interrupt_on(
         logger.info(f"[HITL] 所有工具默认需要审批: {all_tool_names}")
         dynamic_config = {}
         for tool_name in all_tool_names:
+            if tool_name in SAFE_ALWAYS_ALLOWED_TOOLS:
+                logger.debug("工具 %s 是安全兼容工具，跳过 HITL 审批", tool_name)
+                continue
+
             user_policy = user_approvals.get(tool_name)
 
             if user_policy == "always_allow":
@@ -1405,6 +1411,9 @@ async def build_dynamic_interrupt_on_async(
 
     if all_tool_names:
         for tool_name in all_tool_names:
+            if tool_name in SAFE_ALWAYS_ALLOWED_TOOLS:
+                continue
+
             if tool_name not in config:
                 config[tool_name] = {
                     "allowed_decisions": ["approve", "reject"],

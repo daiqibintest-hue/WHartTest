@@ -5,11 +5,14 @@
     :width="modalWidth"
     :confirm-loading="loading"
     :modal-style="{ maxWidth: '95vw' }"
+    :body-class="MODAL_BODY_CLASS"
+    :body-style="{ maxHeight: '70vh', overflow: 'auto', padding: '20px 16px' }"
     @ok="handleSubmit"
     @cancel="handleCancel"
   >
-    <a-spin :loading="fetchLoading">
-      <a-form ref="formRef" :model="formData" :rules="rules" layout="vertical">
+    <div class="modal-scroll-body" :class="MODAL_SCROLL_BODY_CLASS">
+      <a-spin :loading="fetchLoading">
+        <a-form ref="formRef" :model="formData" :rules="rules" layout="vertical">
         <a-alert type="info">
           全局配置会应用到新上传并重新处理的知识库文档。修改切分策略后，历史文档需要重新处理才能生效。
         </a-alert>
@@ -22,6 +25,7 @@
               <a-select
                 v-model="formData.embedding_service"
                 placeholder="请选择嵌入服务"
+                :popup-container="SELECT_POPUP_CONTAINER"
                 :trigger-props="selectTriggerProps"
                 @change="handleEmbeddingServiceChange"
               >
@@ -82,6 +86,7 @@
               <a-select
                 v-model="formData.reranker_service"
                 placeholder="请选择 Reranker 服务"
+                :popup-container="SELECT_POPUP_CONTAINER"
                 :trigger-props="selectTriggerProps"
                 @change="handleRerankerServiceChange"
               >
@@ -138,15 +143,6 @@
 
         <a-divider>默认切分配置</a-divider>
 
-        <a-alert type="info" style="margin-bottom: 12px">
-          <template v-if="formData.parent_child_enabled">
-            已开启 Parent-Child：使用 Parent 块大小、Parent 块重叠、Child 块大小、Child 块重叠；普通分块大小和普通分块重叠不生效。
-          </template>
-          <template v-else>
-            未开启 Parent-Child：使用普通分块大小和普通分块重叠。
-          </template>
-        </a-alert>
-
         <a-alert
           v-if="formData.chunk_strategy !== savedChunkStrategy"
           type="warning"
@@ -167,6 +163,7 @@
               <a-select
                 v-model="formData.chunk_strategy"
                 placeholder="请选择切分策略"
+                :popup-container="SELECT_POPUP_CONTAINER"
                 :trigger-props="selectTriggerProps"
               >
                 <a-option value="recursive_character">固定长度</a-option>
@@ -179,7 +176,7 @@
             <a-form-item field="chunk_size">
               <template #label>
                 分块大小
-                <a-tooltip content="未开启 Parent-Child 时生效；开启后由 Parent / Child 分块参数控制。">
+                <a-tooltip content="每个文本块的最大字符数。通常 1000-2000 比较稳，值越大越保留上下文，值越小越利于精准召回。">
                   <icon-question-circle class="label-tip-icon" />
                 </a-tooltip>
               </template>
@@ -188,8 +185,8 @@
                 :min="100"
                 :max="4000"
                 :step="100"
-                style="width: 100%"
                 :disabled="formData.parent_child_enabled"
+                style="width: 100%"
               />
             </a-form-item>
           </a-col>
@@ -200,7 +197,7 @@
             <a-form-item field="chunk_overlap">
               <template #label>
                 分块重叠
-                <a-tooltip content="未开启 Parent-Child 时生效；开启后由 Parent / Child 分块参数控制。">
+                <a-tooltip content="相邻分块间保留的重叠字符数。一般建议设置为分块大小的 10%-20%。">
                   <icon-question-circle class="label-tip-icon" />
                 </a-tooltip>
               </template>
@@ -209,8 +206,8 @@
                 :min="0"
                 :max="500"
                 :step="50"
-                style="width: 100%"
                 :disabled="formData.parent_child_enabled"
+                style="width: 100%"
               />
             </a-form-item>
           </a-col>
@@ -442,33 +439,6 @@
         </div>
       </a-form>
     </a-spin>
-  </a-modal>
-
-  <!-- Reprocess confirmation dialog -->
-  <a-modal
-    :visible="showReprocessConfirm"
-    title="切分策略已变更"
-    :closable="!reprocessing"
-    :mask-closable="false"
-    :ok-text="reprocessing ? '处理中...' : '立即重处理'"
-    :cancel-text="reprocessing ? '' : '跳过'"
-    :ok-loading="reprocessing"
-    @ok="handleBatchReprocess"
-    @cancel="handleSkipReprocess"
-  >
-    <a-alert type="warning" style="margin-bottom: 12px">
-      切分策略已从「{{ getStrategyLabel(originalChunkStrategy) }}」变更为「{{ getStrategyLabel(formData.chunk_strategy || 'heading_aware') }}」。
-      历史文档的分块仍使用旧策略，需要重新处理才能生效。
-    </a-alert>
-    <p>是否立即对所有知识库的文档进行批量重处理？</p>
-    <div v-if="reprocessing" style="margin-top: 16px">
-      <a-progress
-        :percent="reprocessProgress ? Math.round((reprocessProgress.completed / reprocessProgress.total) * 100) : 0"
-        :status="reprocessProgress?.completed === reprocessProgress?.total ? 'success' : 'normal'"
-      />
-      <p style="margin-top: 8px; color: #86909c; font-size: 13px">
-        正在提交重处理任务：{{ reprocessProgress?.completed || 0 }} / {{ reprocessProgress?.total || 0 }}
-      </p>
     </div>
   </a-modal>
 </template>
@@ -507,12 +477,10 @@ const hasSavedRerankerApiKey = ref(false);
 const savedChunkStrategy = ref('');
 const apiKeyTouched = ref(false);
 const rerankerApiKeyTouched = ref(false);
-
-// Strategy change detection & reprocess
-const originalChunkStrategy = ref<string>('heading_aware');
-const showReprocessConfirm = ref(false);
-const reprocessing = ref(false);
-const reprocessProgress = ref<{ completed: number; total: number } | null>(null);
+const MODAL_BODY_CLASS = 'knowledge-global-config-modal-body';
+const MODAL_SCROLL_BODY_CLASS = 'knowledge-global-config-modal-scroll-body';
+const SELECT_POPUP_CONTAINER = `.${MODAL_SCROLL_BODY_CLASS}`;
+const selectTriggerProps = { updateAtScroll: true, unmountOnClose: true };
 
 const windowWidth = ref(window.innerWidth);
 const updateWindowWidth = () => {
@@ -520,7 +488,9 @@ const updateWindowWidth = () => {
 };
 const modalWidth = computed(() => (windowWidth.value < 600 ? '95%' : 580));
 
-onMounted(() => window.addEventListener('resize', updateWindowWidth));
+onMounted(() => {
+  window.addEventListener('resize', updateWindowWidth);
+});
 onUnmounted(() => window.removeEventListener('resize', updateWindowWidth));
 
 const formData = reactive<KnowledgeGlobalConfig>({
@@ -532,9 +502,9 @@ const formData = reactive<KnowledgeGlobalConfig>({
   reranker_api_url: '',
   reranker_api_key: '',
   reranker_model_name: 'Qwen3-VL-Reranker-2B',
-  chunk_strategy: 'heading_aware',
-  chunk_size: 800,
-  chunk_overlap: 150,
+  chunk_strategy: 'recursive_character',
+  chunk_size: 1000,
+  chunk_overlap: 200,
   parent_child_enabled: false,
   parent_chunk_size: 2000,
   parent_chunk_overlap: 200,
@@ -574,19 +544,15 @@ const rules = computed(() => {
       { type: 'number', min: 0, max: 500, message: '分块重叠必须在 0-500 之间' },
     ],
     parent_chunk_size: [
-      { required: formData.parent_child_enabled, message: '请输入 Parent 块大小' },
       { type: 'number', min: 1000, max: 8000, message: 'Parent 块大小必须在 1000-8000 之间' },
     ],
     parent_chunk_overlap: [
-      { required: formData.parent_child_enabled, message: '请输入 Parent 块重叠' },
       { type: 'number', min: 0, max: 500, message: 'Parent 块重叠必须在 0-500 之间' },
     ],
     child_chunk_size: [
-      { required: formData.parent_child_enabled, message: '请输入 Child 块大小' },
       { type: 'number', min: 200, max: 2000, message: 'Child 块大小必须在 200-2000 之间' },
     ],
     child_chunk_overlap: [
-      { required: formData.parent_child_enabled, message: '请输入 Child 块重叠' },
       { type: 'number', min: 0, max: 400, message: 'Child 块重叠必须在 0-400 之间' },
     ],
   };
@@ -611,12 +577,6 @@ const apiKeyPlaceholder = computed(() =>
 const rerankerApiKeyPlaceholder = computed(() =>
   hasSavedRerankerApiKey.value ? '已保存，如需修改请重新输入' : '需要时再填写'
 );
-
-const selectTriggerProps = {
-  updateAtScroll: true,
-  scrollToClose: true,
-  scrollToCloseDistance: 1,
-};
 
 watch(
   () => props.visible,
@@ -647,13 +607,12 @@ const fetchData = async () => {
     hasSavedRerankerApiKey.value = !!config.reranker_api_key;
     apiKeyTouched.value = false;
     rerankerApiKeyTouched.value = false;
-    originalChunkStrategy.value = config.chunk_strategy || 'heading_aware';
     Object.assign(formData, {
       ...config,
       api_key: '',
       reranker_api_key: '',
     });
-    savedChunkStrategy.value = config.chunk_strategy || 'heading_aware';
+    savedChunkStrategy.value = config.chunk_strategy || 'recursive_character';
   } catch (error) {
     console.error('获取配置失败:', error);
     Message.error('获取配置失败');
@@ -843,14 +802,8 @@ const handleSubmit = async () => {
 
     await KnowledgeService.updateGlobalConfig(payload);
     Message.success('配置保存成功');
-
-    const strategyChanged = formData.chunk_strategy !== originalChunkStrategy.value;
-    if (strategyChanged) {
-      showReprocessConfirm.value = true;
-    } else {
-      emit('saved');
-      emit('close');
-    }
+    emit('saved');
+    emit('close');
   } catch (error: any) {
     console.error('保存配置失败:', error);
     Message.error(error?.message || '保存配置失败');
@@ -859,55 +812,16 @@ const handleSubmit = async () => {
   }
 };
 
-const getStrategyLabel = (strategy: string) => {
-  const labels: Record<string, string> = {
-    recursive_character: '固定长度',
-    heading_aware: '结构优先',
-    markdown_header: 'Markdown 标题',
-  };
-  return labels[strategy] || strategy;
-};
-
-const handleBatchReprocess = async () => {
-  reprocessing.value = true;
-  try {
-    const kbResponse = await KnowledgeService.getKnowledgeBases();
-    const kbs = Array.isArray(kbResponse) ? kbResponse : kbResponse.results;
-
-    reprocessProgress.value = { completed: 0, total: kbs.length };
-
-    for (const kb of kbs) {
-      try {
-        await KnowledgeService.reprocessKnowledgeBaseDocuments(kb.id);
-      } catch (e) {
-        console.error(`Failed to reprocess KB ${kb.name}:`, e);
-      }
-      reprocessProgress.value.completed++;
-    }
-
-    Message.success(`已提交 ${kbs.length} 个知识库的重处理任务`);
-  } catch (error) {
-    Message.error('批量重处理失败');
-  } finally {
-    reprocessing.value = false;
-    showReprocessConfirm.value = false;
-    emit('saved');
-    emit('close');
-  }
-};
-
-const handleSkipReprocess = () => {
-  showReprocessConfirm.value = false;
-  emit('saved');
-  emit('close');
-};
-
 const handleCancel = () => {
   emit('close');
 };
 </script>
 
 <style scoped>
+.modal-scroll-body {
+  position: relative;
+}
+
 :deep(.arco-form-item) {
   margin-bottom: 12px;
 }
