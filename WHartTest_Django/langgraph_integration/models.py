@@ -71,6 +71,15 @@ class LLMConfig(models.Model):
         help_text="启用后，AI回复将以流式方式逐字输出；禁用则等待完整回复后一次性返回"
     )
 
+    # 推理模型支持
+    is_reasoning_model = models.BooleanField(
+        default=False,
+        verbose_name="推理模型",
+        help_text="启用后，使用 ChatDeepSeek 包装器处理 reasoning_content 字段，"
+                  "适用于 DeepSeek-R1、MIMO 等推理模型。"
+                  "系统也会根据模型名称自动检测（如包含 deepseek-reasoner、mimo 等关键词）"
+    )
+
     # 状态字段（保持不变）
     is_active = models.BooleanField(default=False, verbose_name="是否激活",
                                    help_text="是否为当前激活的LLM配置")

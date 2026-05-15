@@ -23,6 +23,7 @@ class LLMConfigSerializer(serializers.ModelSerializer):
             "enable_summarization",
             "enable_hitl",
             "enable_streaming",
+            "is_reasoning_model",
             "is_active",
             "created_at",
             "updated_at",

@@ -131,6 +131,7 @@ def create_llm_instance(active_config, temperature=0.7):
     支持多供应商：
     - openai_compatible: ChatOpenAI（OpenAI兼容协议）
     - qwen: ChatQwen（阿里云百炼通义千问）
+    - DeepSeek 推理模型: ChatDeepSeek（自动检测 deepseek-reasoner 等推理模型）
 
     关键参数说明：
     - timeout: 请求超时时间（秒），防止无限期等待
@@ -181,7 +182,19 @@ def create_llm_instance(active_config, temperature=0.7):
                 "timeout": request_timeout,  # 单次请求超时
                 "max_retries": max_retries,  # 自动重试次数
             }
-            llm = ChatOpenAI(**llm_kwargs)
+
+            # 检测推理模型（名称匹配 或 配置字段），使用专用 ChatDeepSeek 包装器
+            from .chat_deepseek import is_reasoning_model, ChatDeepSeek
+
+            config_flag = getattr(active_config, "is_reasoning_model", False)
+            if config_flag or is_reasoning_model(model_identifier):
+                logger.info(
+                    "检测到 DeepSeek 推理模型 '%s'，使用 ChatDeepSeek 包装器",
+                    model_identifier,
+                )
+                llm = ChatDeepSeek(**llm_kwargs)
+            else:
+                llm = ChatOpenAI(**llm_kwargs)
 
         logger.info(
             "Initialized LLM: provider=%s, model=%s, base_url=%s, timeout=%ss, max_retries=%s",

@@ -35,6 +35,11 @@ _CONTENT_AUDIT_ERROR_CODES = {"CHAT_HANDLER_INPUT_AUDIT_FAIL"}
 _CONTENT_AUDIT_FRIENDLY_MSG = (
     "当前输入内容触发了模型服务商的内容安全审核，请尝试调整输入内容后重试。"
 )
+_REASONING_CONTENT_ERROR_HINT = "reasoning_content"
+_REASONING_CONTENT_FRIENDLY_MSG = (
+    "DeepSeek 推理模型的多轮对话需要回传推理上下文，但当前版本未正确处理。"
+    "请重启后端服务以加载 ChatDeepSeek 修复，或切换为非推理模型（如 deepseek-chat）。"
+)
 _MODEL_COOLDOWN_ERROR_CODES = {"model_cooldown"}
 _RATE_LIMIT_HINTS = (
     "rate limit",
@@ -243,6 +248,18 @@ def get_user_friendly_llm_error(
             "message": _CONTENT_AUDIT_FRIENDLY_MSG,
             "errors": {error_field: [_CONTENT_AUDIT_FRIENDLY_MSG]},
             "error_code": "content_audit",
+            "model": None,
+            "reset_seconds": None,
+            "reset_time": None,
+        }
+
+    error_text = str(exc).lower()
+    if _REASONING_CONTENT_ERROR_HINT in error_text:
+        return {
+            "status_code": 400,
+            "message": _REASONING_CONTENT_FRIENDLY_MSG,
+            "errors": {error_field: [_REASONING_CONTENT_FRIENDLY_MSG]},
+            "error_code": "reasoning_content_missing",
             "model": None,
             "reset_seconds": None,
             "reset_time": None,
