@@ -5,7 +5,10 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .models import KnowledgeGlobalConfig
+from projects.models import Project
+
+from .models import KnowledgeBase, KnowledgeGlobalConfig
+from .serializers import KnowledgeBaseSerializer
 from .views import _mask_secret
 
 
@@ -112,3 +115,41 @@ class KnowledgeGlobalConfigSecretHandlingTests(TestCase):
         self.assertEqual(self.config.chunk_strategy, "recursive_character")
         self.assertEqual(self.config.chunk_size, 1300)
         self.assertEqual(self.config.chunk_overlap, 160)
+
+
+class KnowledgeBaseDefaultConfigTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="kb-admin",
+            email="kb-admin@example.com",
+            password="testpass123",
+            is_superuser=True,
+        )
+        self.project = Project.objects.create(
+            name="Knowledge Project",
+            description="",
+            creator=self.user,
+        )
+        self.config = KnowledgeGlobalConfig.get_config()
+        self.config.chunk_size = 1400
+        self.config.chunk_overlap = 180
+        self.config.save()
+
+    def test_create_knowledge_base_uses_global_chunk_defaults_when_omitted(self):
+        request = Mock(user=self.user)
+        serializer = KnowledgeBaseSerializer(
+            data={
+                "name": "Default Chunk KB",
+                "project": self.project.id,
+            },
+            context={"request": request},
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        knowledge_base = serializer.save(creator=self.user)
+
+        self.assertEqual(knowledge_base.chunk_size, 1400)
+        self.assertEqual(knowledge_base.chunk_overlap, 180)
+        self.assertTrue(
+            KnowledgeBase.objects.filter(id=knowledge_base.id).exists()
+        )

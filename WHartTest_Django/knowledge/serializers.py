@@ -78,6 +78,13 @@ class KnowledgeBaseSerializer(serializers.ModelSerializer):
         validated_data.pop('project', None)
         return super().update(instance, validated_data)
 
+    def create(self, validated_data):
+        """Create a knowledge base using global chunk defaults when omitted."""
+        config = KnowledgeGlobalConfig.get_config()
+        validated_data.setdefault('chunk_size', config.chunk_size)
+        validated_data.setdefault('chunk_overlap', config.chunk_overlap)
+        return super().create(validated_data)
+
     def validate(self, data):
         """验证数据，处理project字段"""
         # 如果是更新操作，始终使用现有实例的project（忽略传入的project值）

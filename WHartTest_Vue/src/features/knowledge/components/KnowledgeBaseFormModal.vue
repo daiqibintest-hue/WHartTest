@@ -109,6 +109,10 @@ const emit = defineEmits<{
 const projectStore = useProjectStore();
 const formRef = ref();
 const loading = ref(false);
+const globalChunkDefaults = reactive({
+  chunk_size: 800,
+  chunk_overlap: 150,
+});
 
 const isEdit = computed(() => !!props.knowledgeBase);
 
@@ -162,6 +166,7 @@ watch(() => props.visible, async (visible) => {
         chunk_overlap: props.knowledgeBase.chunk_overlap,
       });
     } else {
+      await loadGlobalChunkDefaults();
       if (projectStore.currentProjectId) {
         formData.project = Number(projectStore.currentProjectId);
       }
@@ -190,11 +195,23 @@ const resetForm = () => {
     name: '',
     description: '',
     project: 0,
-    chunk_size: 800,
-    chunk_overlap: 150,
+    chunk_size: globalChunkDefaults.chunk_size,
+    chunk_overlap: globalChunkDefaults.chunk_overlap,
     is_active: true,
   });
   formRef.value?.clearValidate();
+};
+
+const loadGlobalChunkDefaults = async () => {
+  try {
+    const config = await KnowledgeService.getGlobalConfig();
+    globalChunkDefaults.chunk_size = config.chunk_size;
+    globalChunkDefaults.chunk_overlap = config.chunk_overlap;
+    formData.chunk_size = config.chunk_size;
+    formData.chunk_overlap = config.chunk_overlap;
+  } catch (error) {
+    console.warn('Failed to load knowledge global chunk defaults', error);
+  }
 };
 
 const handleSubmit = async () => {
