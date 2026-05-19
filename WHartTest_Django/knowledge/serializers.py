@@ -10,6 +10,7 @@ class KnowledgeGlobalConfigSerializer(serializers.ModelSerializer):
     updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
     embedding_service_display = serializers.CharField(source='get_embedding_service_display', read_only=True)
     reranker_service_display = serializers.CharField(source='get_reranker_service_display', read_only=True)
+    chunk_strategy_display = serializers.CharField(source='get_chunk_strategy_display', read_only=True)
 
     class Meta:
         model = KnowledgeGlobalConfig
@@ -18,7 +19,7 @@ class KnowledgeGlobalConfigSerializer(serializers.ModelSerializer):
             'api_base_url', 'api_key', 'model_name',
             'reranker_service', 'reranker_service_display',
             'reranker_api_url', 'reranker_api_key', 'reranker_model_name',
-            'chunk_size', 'chunk_overlap', 'chunk_strategy',
+            'chunk_size', 'chunk_overlap', 'chunk_strategy', 'chunk_strategy_display',
             'parent_child_enabled', 'parent_chunk_size', 'parent_chunk_overlap',
             'child_chunk_size', 'child_chunk_overlap',
             'enable_query_rewrite', 'enable_mmr', 'mmr_lambda',

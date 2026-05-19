@@ -15,7 +15,8 @@ DeepSeek / MIMO 推理模型专用 ChatModel 包装器
 
 import json
 import logging
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Iterator, Optional
+from urllib.parse import urljoin
 
 import httpx
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
@@ -60,7 +61,9 @@ class ChatDeepSeek(ChatOpenAI):
         api_messages = payload.get("messages", [])
         for msg, api_msg in zip(messages, api_messages):
             if isinstance(msg, AIMessage) and api_msg.get("role") == "assistant":
-                rc = msg.additional_kwargs.get("reasoning_content")
+                rc = msg.additional_kwargs.get(
+                    "reasoning_content"
+                ) or msg.response_metadata.get("reasoning_content")
                 if rc:
                     api_msg["reasoning_content"] = rc
 
@@ -72,7 +75,9 @@ class ChatDeepSeek(ChatOpenAI):
         self._ensure_sync_client_available()
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
 
-        raw_response = self.root_client.chat.completions.with_raw_response.create(**payload)
+        raw_response = self.root_client.chat.completions.with_raw_response.create(
+            **payload
+        )
         data = raw_response.json()
         reasoning = self._extract_rc_from_json(data)
         result = self._json_to_chat_result(data)
@@ -81,13 +86,19 @@ class ChatDeepSeek(ChatOpenAI):
             for g in result.generations:
                 if isinstance(g, ChatGeneration) and isinstance(g.message, AIMessage):
                     g.message.additional_kwargs["reasoning_content"] = reasoning
-                    logger.info("ChatDeepSeek: 保存 reasoning_content (长度=%d)", len(reasoning))
+                    logger.info(
+                        "ChatDeepSeek: 保存 reasoning_content (长度=%d)", len(reasoning)
+                    )
         return result
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
 
-        raw_response = await self.root_async_client.chat.completions.with_raw_response.create(**payload)
+        raw_response = (
+            await self.root_async_client.chat.completions.with_raw_response.create(
+                **payload
+            )
+        )
         data = raw_response.json()
         reasoning = self._extract_rc_from_json(data)
         result = self._json_to_chat_result(data)
@@ -96,7 +107,9 @@ class ChatDeepSeek(ChatOpenAI):
             for g in result.generations:
                 if isinstance(g, ChatGeneration) and isinstance(g.message, AIMessage):
                     g.message.additional_kwargs["reasoning_content"] = reasoning
-                    logger.info("ChatDeepSeek: 保存 reasoning_content (长度=%d)", len(reasoning))
+                    logger.info(
+                        "ChatDeepSeek: 保存 reasoning_content (长度=%d)", len(reasoning)
+                    )
         return result
 
     # ── 流式：httpx 直接请求 ──
@@ -113,11 +126,8 @@ class ChatDeepSeek(ChatOpenAI):
             yield chunk
 
     def _stream_via_httpx(self, params: dict) -> Iterator[ChatGenerationChunk]:
-        url = str(self.root_client.base_url).rstrip("/") + "/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.root_client.api_key}",
-            "Content-Type": "application/json",
-        }
+        url = self._chat_completions_url()
+        headers = self._request_headers()
         accumulated_reasoning = ""
 
         with httpx.Client(timeout=self.request_timeout or 120) as client:
@@ -136,19 +146,18 @@ class ChatDeepSeek(ChatOpenAI):
 
                     rc = self._extract_rc_from_stream_json(chunk_data)
                     if rc:
-                        accumulated_reasoning = rc
+                        accumulated_reasoning += rc
 
-                    yield self._stream_json_to_generation_chunk(
+                    generation_chunk = self._stream_json_to_generation_chunk(
                         chunk_data,
                         reasoning_content=accumulated_reasoning,
                     )
+                    if self._should_yield_chunk(generation_chunk):
+                        yield generation_chunk
 
     async def _astream_via_httpx(self, params: dict):
-        url = str(self.root_client.base_url).rstrip("/") + "/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.root_client.api_key}",
-            "Content-Type": "application/json",
-        }
+        url = self._chat_completions_url()
+        headers = self._request_headers()
         accumulated_reasoning = ""
 
         async with httpx.AsyncClient(timeout=self.request_timeout or 120) as client:
@@ -167,14 +176,45 @@ class ChatDeepSeek(ChatOpenAI):
 
                     rc = self._extract_rc_from_stream_json(chunk_data)
                     if rc:
-                        accumulated_reasoning = rc
+                        accumulated_reasoning += rc
 
-                    yield self._stream_json_to_generation_chunk(
+                    generation_chunk = self._stream_json_to_generation_chunk(
                         chunk_data,
                         reasoning_content=accumulated_reasoning,
                     )
+                    if self._should_yield_chunk(generation_chunk):
+                        yield generation_chunk
 
     # ── 辅助方法 ──
+
+    def _chat_completions_url(self) -> str:
+        base_url = str(getattr(self.root_client, "base_url", "")).rstrip("/")
+        if base_url.endswith("/chat/completions"):
+            return base_url
+        base_url = base_url + "/"
+        return urljoin(base_url, "chat/completions")
+
+    def _request_headers(self) -> dict:
+        api_key = getattr(self, "openai_api_key", None) or getattr(
+            self.root_client, "api_key", ""
+        )
+        if hasattr(api_key, "get_secret_value"):
+            api_key = api_key.get_secret_value()
+
+        return {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+    @staticmethod
+    def _should_yield_chunk(chunk: ChatGenerationChunk) -> bool:
+        message = chunk.message
+        return bool(
+            message.content
+            or message.additional_kwargs.get("tool_calls")
+            or chunk.generation_info
+            or message.usage_metadata
+        )
 
     @staticmethod
     def _extract_rc_from_json(data: dict) -> Optional[str]:
@@ -212,6 +252,7 @@ class ChatDeepSeek(ChatOpenAI):
                 response_metadata={
                     "model_name": data.get("model", ""),
                     "finish_reason": choice.get("finish_reason"),
+                    "reasoning_content": msg_data.get("reasoning_content") or "",
                 },
             )
             if usage:
@@ -242,7 +283,7 @@ class ChatDeepSeek(ChatOpenAI):
             finish_reason = choice.get("finish_reason")
             if delta.get("tool_calls"):
                 additional_kwargs["tool_calls"] = delta["tool_calls"]
-        if reasoning_content:
+        if reasoning_content and finish_reason is not None:
             additional_kwargs["reasoning_content"] = reasoning_content
 
         message_chunk = AIMessageChunk(
@@ -251,6 +292,9 @@ class ChatDeepSeek(ChatOpenAI):
             response_metadata={
                 "model_name": data.get("model", ""),
                 "finish_reason": finish_reason,
+                "reasoning_content": reasoning_content
+                if finish_reason is not None
+                else "",
             },
         )
         usage = data.get("usage")

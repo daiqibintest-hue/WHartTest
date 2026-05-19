@@ -6,7 +6,7 @@ export type EmbeddingServiceType = 'openai' | 'azure_openai' | 'ollama' | 'xinfe
 /**
  * Reranker 服务类型
  */
-export type RerankerServiceType = 'none' | 'xinference' | 'custom';
+export type RerankerServiceType = 'none' | 'xinference' | 'dashscope' | 'custom';
 
 export type ChunkStrategyType = 'recursive_character' | 'heading_aware' | 'markdown_header';
 
@@ -70,6 +70,7 @@ export interface KnowledgeGlobalConfig {
   reranker_api_key?: string;
   reranker_model_name?: string;
   chunk_strategy: ChunkStrategyType;
+  chunk_strategy_display?: string;
   chunk_size: number;
   chunk_overlap: number;
   parent_child_enabled: boolean;
@@ -411,4 +412,3 @@ export interface ErrorResponse {
   detail?: string;
   [key: string]: any;
 }
-

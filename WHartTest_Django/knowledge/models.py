@@ -20,15 +20,16 @@ class KnowledgeGlobalConfig(models.Model):
     ]
 
     RERANKER_SERVICE_CHOICES = [
-        ("none", "Disabled"),
+        ("none", "不启用"),
         ("xinference", "Xinference"),
-        ("custom", "Custom API"),
+        ("dashscope", "DashScope (阿里百炼)"),
+        ("custom", "自定义 API"),
     ]
 
     CHUNK_STRATEGY_CHOICES = [
-        ("recursive_character", "Fixed length"),
-        ("heading_aware", "Structure aware"),
-        ("markdown_header", "Markdown header"),
+        ("recursive_character", "固定长度"),
+        ("heading_aware", "结构优先"),
+        ("markdown_header", "Markdown 标题"),
     ]
 
     embedding_service = models.CharField(

@@ -158,6 +158,14 @@
             </a-space>
           </a-form-item>
         </a-col>
+        <a-col :span="8">
+          <a-form-item field="is_reasoning_model" label="推理模型">
+            <a-space>
+              <a-switch v-model="formData.is_reasoning_model" checked-color="#eb2f96" />
+              <span class="switch-desc">DeepSeek-R1 / MIMO 等</span>
+            </a-space>
+          </a-form-item>
+        </a-col>
       </a-row>
     </a-form>
   </a-modal>
@@ -228,6 +236,7 @@ const defaultFormData: CreateLlmConfigRequest = {
   enable_summarization: true,
   enable_hitl: false,
   enable_streaming: true,
+  is_reasoning_model: false,
   is_active: false,
 };
 const formData = ref<CreateLlmConfigRequest>({ ...defaultFormData });
@@ -327,6 +336,7 @@ watch(
           enable_summarization: props.configData.enable_summarization ?? true,
           enable_hitl: props.configData.enable_hitl || false,
           enable_streaming: props.configData.enable_streaming ?? true,
+          is_reasoning_model: props.configData.is_reasoning_model || false,
           is_active: props.configData.is_active,
         };
       } else {
@@ -382,6 +392,9 @@ const handleSubmit = async () => {
     }
     if (formData.value.enable_streaming !== undefined) { // 包含流式输出
       partialData.enable_streaming = formData.value.enable_streaming;
+    }
+    if (formData.value.is_reasoning_model !== undefined) { // 包含推理模型标记
+      partialData.is_reasoning_model = formData.value.is_reasoning_model;
     }
     submitData = partialData;
     emit('submit', submitData, effectiveConfigId.value);
@@ -488,6 +501,7 @@ const testLlmModel = async () => {
       if (formData.value.system_prompt !== undefined) partialData.system_prompt = formData.value.system_prompt;
       if (formData.value.supports_vision !== undefined) partialData.supports_vision = formData.value.supports_vision;
       if (formData.value.context_limit !== undefined) partialData.context_limit = formData.value.context_limit;
+      if (formData.value.is_reasoning_model !== undefined) partialData.is_reasoning_model = formData.value.is_reasoning_model;
       const updateResp = await partialUpdateLlmConfig(configId, partialData);
       if (!isActiveTestRequest(sessionId, requestId)) {
         return;

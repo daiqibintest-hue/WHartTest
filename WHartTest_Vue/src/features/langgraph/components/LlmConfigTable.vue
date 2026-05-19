@@ -25,6 +25,10 @@
           <template #unchecked>未激活</template>
         </a-switch>
       </template>
+      <template #reasoningModel="{ record }">
+        <a-tag v-if="record.is_reasoning_model" color="arcoblue" size="small">推理</a-tag>
+        <span v-else class="text-gray-400">-</span>
+      </template>
       <template #actions="{ record }">
         <a-space>
           <a-button type="primary" size="small" @click="emit('edit', record)">
@@ -60,6 +64,7 @@ import {
   Space as ASpace,
   Popconfirm as APopconfirm,
   Switch as ASwitch,
+  Tag as ATag,
   type TableColumnData,
   type PaginationProps,
 } from '@arco-design/web-vue';
@@ -100,6 +105,7 @@ const columns: TableColumnData[] = [
   { title: 'API URL', dataIndex: 'api_url', width: 200, ellipsis: true, tooltip: true },
   { title: '系统提示词', dataIndex: 'system_prompt', slotName: 'systemPrompt', width: 200, ellipsis: true, tooltip: true },
   { title: '状态', dataIndex: 'is_active', slotName: 'isActive', width: 100, align: 'center' },
+  { title: '推理', dataIndex: 'is_reasoning_model', slotName: 'reasoningModel', width: 80, align: 'center' },
   { title: '创建时间', dataIndex: 'created_at', slotName: 'createdAt', width: 150, sortable: { sortDirections: ['ascend', 'descend'] } },
   { title: '更新时间', dataIndex: 'updated_at', slotName: 'updatedAt', width: 150, sortable: { sortDirections: ['ascend', 'descend'] } },
   { title: '操作', slotName: 'actions', width: 220, align: 'center', fixed: 'right' },

@@ -1342,12 +1342,24 @@ class VectorStoreManager:
         )
 
     def _get_reranker_config(self) -> tuple:
-        """获取 Reranker 配置 → (url, model, api_key)"""
+        """获取 Reranker 配置 → (url, model, api_key, service_type)"""
         config = self.global_config
 
         reranker_service = getattr(config, "reranker_service", "none")
         if reranker_service == "none":
-            return None, None, None
+            return None, None, None, None
+
+        reranker_model = getattr(config, "reranker_model_name", "Qwen3-VL-Reranker-2B")
+        reranker_api_key = getattr(config, "reranker_api_key", None) or None
+
+        # DashScope 使用固定端点，不需要 reranker_api_url
+        if reranker_service == "dashscope":
+            return (
+                "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+                reranker_model,
+                reranker_api_key,
+                "dashscope",
+            )
 
         reranker_api_url = getattr(config, "reranker_api_url", None)
         if not reranker_api_url:
@@ -1356,28 +1368,33 @@ class VectorStoreManager:
             elif reranker_service == "xinference":
                 reranker_api_url = "http://localhost:9997"
             else:
-                return None, None, None
-
-        reranker_model = getattr(config, "reranker_model_name", "Qwen3-VL-Reranker-2B")
-        reranker_api_key = getattr(config, "reranker_api_key", None) or None
+                return None, None, None, None
 
         base_url = reranker_api_url.rstrip("/")
-        return f"{base_url}/v1/rerank", reranker_model, reranker_api_key
+        # xinference 需要拼接 /v1/rerank；custom 类型 URL 已包含完整路径
+        if reranker_service == "xinference":
+            return f"{base_url}/v1/rerank", reranker_model, reranker_api_key, "xinference"
+        return base_url, reranker_model, reranker_api_key, "custom"
 
     def _get_reranker_url(self) -> Optional[str]:
         """获取 Reranker 服务地址"""
-        url, _, _ = self._get_reranker_config()
+        url, _, _, _ = self._get_reranker_config()
         return url
 
     def _get_reranker_model(self) -> str:
         """获取 Reranker 模型名称"""
-        _, model, _ = self._get_reranker_config()
+        _, model, _, _ = self._get_reranker_config()
         return model or self.RERANKER_MODEL
 
     def _get_reranker_api_key(self) -> Optional[str]:
         """获取 Reranker API 密钥"""
-        _, _, api_key = self._get_reranker_config()
+        _, _, api_key, _ = self._get_reranker_config()
         return api_key
+
+    def _get_reranker_service_type(self) -> Optional[str]:
+        """获取 Reranker 服务类型"""
+        _, _, _, service_type = self._get_reranker_config()
+        return service_type
 
     def _composite_score(
         self,
@@ -1448,6 +1465,7 @@ class VectorStoreManager:
         reranker_url = self._get_reranker_url()
         reranker_model = self._get_reranker_model()
         reranker_api_key = self._get_reranker_api_key()
+        service_type = self._get_reranker_service_type()
         if not reranker_url or not candidates:
             return candidates[:top_k]
 
@@ -1464,19 +1482,32 @@ class VectorStoreManager:
             if reranker_api_key:
                 headers["Authorization"] = f"Bearer {reranker_api_key}"
 
-            session = http_requests.Session()
-            session.trust_env = False
-            logger.info(
-                f"🔄 Reranker 请求: URL={reranker_url}, model={reranker_model}, docs={len(documents)}"
-            )
-            response = session.post(
-                reranker_url,
-                json={
+            # DashScope 使用不同的请求格式
+            if service_type == "dashscope":
+                request_body = {
+                    "model": reranker_model,
+                    "input": {
+                        "query": query,
+                        "documents": documents,
+                    },
+                    "parameters": {"top_n": top_k},
+                }
+            else:
+                request_body = {
                     "model": reranker_model,
                     "query": query,
                     "documents": documents,
                     "top_n": top_k,
-                },
+                }
+
+            session = http_requests.Session()
+            session.trust_env = False
+            logger.info(
+                f"🔄 Reranker 请求: URL={reranker_url}, model={reranker_model}, service={service_type}, docs={len(documents)}"
+            )
+            response = session.post(
+                reranker_url,
+                json=request_body,
                 headers=headers,
                 timeout=1200,
             )
@@ -1487,7 +1518,11 @@ class VectorStoreManager:
                 )
                 return candidates[:top_k]
 
-            results = response.json().get("results", [])
+            resp_json = response.json()
+            # 兼容两种响应格式: {"results": [...]} 和 {"output": {"results": [...]}}
+            results = resp_json.get("results") or (
+                resp_json.get("output", {}).get("results")
+            )
             if not results:
                 logger.warning("⚠️ Reranker 返回空结果，降级为 RRF 排序")
                 return candidates[:top_k]

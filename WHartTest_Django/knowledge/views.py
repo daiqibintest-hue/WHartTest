@@ -894,7 +894,7 @@ def test_reranker_connection(request):
         return Response(
             {"error": "请选择 Reranker 服务"}, status=status.HTTP_400_BAD_REQUEST
         )
-    if not reranker_api_url:
+    if not reranker_api_url and reranker_service != "dashscope":
         return Response(
             {"error": "请输入 Reranker API 地址"}, status=status.HTTP_400_BAD_REQUEST
         )
@@ -917,6 +917,20 @@ def test_reranker_connection(request):
                 "model": reranker_model_name,
                 "query": test_query,
                 "documents": test_documents,
+            }
+        elif reranker_service == "dashscope":
+            test_url = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {reranker_api_key}",
+            }
+            request_body = {
+                "model": reranker_model_name,
+                "input": {
+                    "query": test_query,
+                    "documents": test_documents,
+                },
+                "parameters": {"top_n": 2},
             }
         elif reranker_service == "custom":
             test_url = reranker_api_url
@@ -946,11 +960,14 @@ def test_reranker_connection(request):
 
         if response.ok:
             data = response.json()
-            # Xinference rerank 返回格式: {"results": [{"index": 0, "relevance_score": 0.9}, ...]}
+            # 兼容两种格式: {"results": [...]} 和 {"output": {"results": [...]}}
+            results = data.get("results") or (
+                data.get("output", {}).get("results")
+            )
             has_results = (
-                data.get("results")
-                and isinstance(data["results"], list)
-                and len(data["results"]) > 0
+                results
+                and isinstance(results, list)
+                and len(results) > 0
             )
 
             if has_results:

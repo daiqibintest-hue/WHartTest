@@ -15,6 +15,7 @@ export interface LlmConfig {
   enable_summarization?: boolean; // 启用上下文摘要
   enable_hitl?: boolean; // 启用人工审批（Human-in-the-Loop）
   enable_streaming?: boolean; // 启用流式输出
+  is_reasoning_model?: boolean; // 是否为推理模型（如 DeepSeek-R1、MIMO）
   is_active: boolean;
   created_at: string; // ISO 8601 date string
   updated_at: string; // ISO 8601 date string
@@ -36,6 +37,7 @@ export interface CreateLlmConfigRequest {
   enable_summarization?: boolean; // 启用上下文摘要（可选，默认true）
   enable_hitl?: boolean; // 启用人工审批（可选，默认false）
   enable_streaming?: boolean; // 启用流式输出（可选，默认true）
+  is_reasoning_model?: boolean; // 是否为推理模型（可选，默认false）
   is_active?: boolean; // 可选,布尔值, 默认为 false
 }
 
@@ -60,5 +62,6 @@ export interface PartialUpdateLlmConfigRequest {
   enable_summarization?: boolean; // 启用上下文摘要
   enable_hitl?: boolean; // 启用人工审批
   enable_streaming?: boolean; // 启用流式输出
+  is_reasoning_model?: boolean; // 是否为推理模型
   is_active?: boolean;
 }

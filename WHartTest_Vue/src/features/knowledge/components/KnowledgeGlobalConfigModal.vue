@@ -86,17 +86,11 @@
               <a-select
                 v-model="formData.reranker_service"
                 placeholder="请选择 Reranker 服务"
+                :options="rerankerServices"
                 :popup-container="SELECT_POPUP_CONTAINER"
                 :trigger-props="selectTriggerProps"
                 @change="handleRerankerServiceChange"
-              >
-                <a-option
-                  v-for="service in rerankerServices"
-                  :key="service.value"
-                  :value="service.value"
-                  :label="service.label"
-                />
-              </a-select>
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :sm="12">
@@ -111,7 +105,7 @@
         </a-row>
 
         <a-form-item
-          v-if="formData.reranker_service !== 'none'"
+          v-if="formData.reranker_service !== 'none' && formData.reranker_service !== 'dashscope'"
           label="Reranker API 地址"
           field="reranker_api_url"
         >
@@ -163,13 +157,10 @@
               <a-select
                 v-model="formData.chunk_strategy"
                 placeholder="请选择切分策略"
+                :options="chunkStrategyOptions"
                 :popup-container="SELECT_POPUP_CONTAINER"
                 :trigger-props="selectTriggerProps"
-              >
-                <a-option value="recursive_character">固定长度</a-option>
-                <a-option value="heading_aware">结构优先</a-option>
-                <a-option value="markdown_header">Markdown 标题</a-option>
-              </a-select>
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :sm="12">
@@ -312,7 +303,11 @@
                   <icon-question-circle class="label-tip-icon" />
                 </a-tooltip>
               </template>
-              <a-switch v-model="formData.enable_query_rewrite" />
+              <a-switch
+                v-model="formData.enable_query_rewrite"
+                :disabled="formData.enable_multi_query"
+                @change="handleQueryRewriteChange"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :sm="12">
@@ -395,7 +390,10 @@
                   <icon-question-circle class="label-tip-icon" />
                 </a-tooltip>
               </template>
-              <a-switch v-model="formData.enable_multi_query" />
+              <a-switch
+                v-model="formData.enable_multi_query"
+                @change="handleMultiQueryChange"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :sm="12">
@@ -454,6 +452,7 @@ import type {
   KnowledgeGlobalConfig,
   RerankerServiceOption,
   RerankerServiceType,
+  ChunkStrategyType,
 } from '../types/knowledge';
 import { getRequiredFieldsForEmbeddingService } from '../types/knowledge';
 
@@ -526,7 +525,13 @@ const embeddingServices = ref<EmbeddingServiceOption[]>([]);
 const rerankerServices = ref<RerankerServiceOption[]>([
   { value: 'none', label: '不启用' },
   { value: 'xinference', label: 'Xinference' },
+  { value: 'dashscope', label: 'DashScope (阿里百炼)' },
   { value: 'custom', label: '自定义 API' },
+]);
+const chunkStrategyOptions = ref<Array<{ value: ChunkStrategyType; label: string }>>([
+  { value: 'recursive_character', label: '固定长度' },
+  { value: 'heading_aware', label: '结构优先' },
+  { value: 'markdown_header', label: 'Markdown 标题' },
 ]);
 
 const rules = computed(() => {
@@ -587,15 +592,6 @@ watch(
   }
 );
 
-watch(
-  () => formData.enable_multi_query,
-  (val) => {
-    if (val) {
-      formData.enable_query_rewrite = false;
-    }
-  }
-);
-
 const fetchData = async () => {
   fetchLoading.value = true;
   try {
@@ -612,12 +608,27 @@ const fetchData = async () => {
       api_key: '',
       reranker_api_key: '',
     });
+    if (formData.enable_multi_query) {
+      formData.enable_query_rewrite = false;
+    }
     savedChunkStrategy.value = config.chunk_strategy || 'recursive_character';
   } catch (error) {
     console.error('获取配置失败:', error);
     Message.error('获取配置失败');
   } finally {
     fetchLoading.value = false;
+  }
+};
+
+const handleQueryRewriteChange = (value: boolean | string | number) => {
+  if (Boolean(value)) {
+    formData.enable_multi_query = false;
+  }
+};
+
+const handleMultiQueryChange = (value: boolean | string | number) => {
+  if (Boolean(value)) {
+    formData.enable_query_rewrite = false;
   }
 };
 
@@ -663,6 +674,10 @@ const handleRerankerServiceChange = (value: RerankerServiceType) => {
     case 'xinference':
       formData.reranker_api_url = '';
       formData.reranker_model_name = 'Qwen3-VL-Reranker-2B';
+      break;
+    case 'dashscope':
+      formData.reranker_api_url = '';
+      formData.reranker_model_name = 'gte-rerank-v2';
       break;
     case 'custom':
       formData.reranker_api_url = 'http://your-reranker-service:8080/v1/rerank';
