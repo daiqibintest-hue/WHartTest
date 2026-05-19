@@ -242,6 +242,8 @@ services:
 
   # Xinference 模型推理服务（Embedding + Reranker）
   xinference:
+    profiles:
+      - xinference
     build:
       context: .
       dockerfile: deploy-scripts/xinference.Dockerfile

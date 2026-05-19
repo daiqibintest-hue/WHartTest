@@ -242,6 +242,8 @@ services:
           memory: 2G
 
   xinference:
+    profiles:
+      - xinference
     build:
       context: .
       dockerfile: deploy-scripts/xinference.Dockerfile
