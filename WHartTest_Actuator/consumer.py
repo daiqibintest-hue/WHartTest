@@ -652,6 +652,8 @@ class TaskConsumer:
             
             # 定位器值也可能包含变量
             locator_value = detail.get('locator_value', '')
+            locator_value_2 = detail.get('locator_value_2', '')
+            locator_value_3 = detail.get('locator_value_3', '')
             
             # 变量替换：替换 input_value 和 locator_value 中的 ${{变量名}}
             if data_processor:
@@ -664,14 +666,38 @@ class TaskConsumer:
                 locator_value = data_processor.replace(locator_value)
                 if original_locator != locator_value:
                     logger.info(f"变量替换 (定位器): '{original_locator}' -> '{locator_value}'")
+
+                if locator_value_2:
+                    original_locator_2 = locator_value_2
+                    locator_value_2 = data_processor.replace(locator_value_2)
+                    if original_locator_2 != locator_value_2:
+                        logger.info(f"变量替换 (定位器2): '{original_locator_2}' -> '{locator_value_2}'")
+
+                if locator_value_3:
+                    original_locator_3 = locator_value_3
+                    locator_value_3 = data_processor.replace(locator_value_3)
+                    if original_locator_3 != locator_value_3:
+                        logger.info(f"变量替换 (定位器3): '{original_locator_3}' -> '{locator_value_3}'")
                 
                 # 确保替换后的值是字符串类型
                 if not isinstance(input_value, str):
                     input_value = str(input_value)
                 if not isinstance(locator_value, str):
                     locator_value = str(locator_value)
+                if locator_value_2 and not isinstance(locator_value_2, str):
+                    locator_value_2 = str(locator_value_2)
+                if locator_value_3 and not isinstance(locator_value_3, str):
+                    locator_value_3 = str(locator_value_3)
             else:
                 logger.warning(f"data_processor 为 None，跳过变量替换")
+
+            def _parse_index(value):
+                if value is None or value == '':
+                    return None
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return None
             
             steps.append(StepConfig(
                 step_id=detail.get('id', 0),
@@ -681,6 +707,15 @@ class TaskConsumer:
                 input_value=input_value,  # 输入值
                 description=detail.get('element_name', ''),  # 元素名称作为描述
                 wait_time=detail.get('wait_time', 0),
+                is_iframe=detail.get('is_iframe', False),
+                iframe_locator=detail.get('iframe_locator') or '',
+                locator_index=detail.get('locator_index'),
+                locator_type_2=detail.get('locator_type_2'),
+                locator_value_2=locator_value_2 or None,
+                locator_index_2=_parse_index(detail.get('locator_index_2')),
+                locator_type_3=detail.get('locator_type_3'),
+                locator_value_3=locator_value_3 or None,
+                locator_index_3=_parse_index(detail.get('locator_index_3')),
             ))
         
         # 页面URL处理：支持相对路径与 base_url 拼接

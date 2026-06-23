@@ -72,7 +72,16 @@ class UiPageStepsDetailedExecuteSerializer(serializers.ModelSerializer):
     element_name = serializers.CharField(source='element.name', read_only=True)
     locator_type = serializers.CharField(source='element.locator_type', read_only=True)
     locator_value = serializers.CharField(source='element.locator_value', read_only=True)
+    locator_index = serializers.IntegerField(source='element.locator_index', read_only=True)
+    locator_type_2 = serializers.CharField(source='element.locator_type_2', read_only=True)
+    locator_value_2 = serializers.CharField(source='element.locator_value_2', read_only=True)
+    locator_index_2 = serializers.IntegerField(source='element.locator_index_2', read_only=True)
+    locator_type_3 = serializers.CharField(source='element.locator_type_3', read_only=True)
+    locator_value_3 = serializers.CharField(source='element.locator_value_3', read_only=True)
+    locator_index_3 = serializers.IntegerField(source='element.locator_index_3', read_only=True)
     wait_time = serializers.IntegerField(source='element.wait_time', read_only=True)
+    is_iframe = serializers.BooleanField(source='element.is_iframe', read_only=True)
+    iframe_locator = serializers.CharField(source='element.iframe_locator', read_only=True)
 
     class Meta:
         model = UiPageStepsDetailed

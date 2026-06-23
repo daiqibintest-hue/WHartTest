@@ -29,6 +29,15 @@ class StepConfig:
     input_value: str = ''
     description: str = ''
     wait_time: float = 0
+    is_iframe: bool = False
+    iframe_locator: str = ''
+    locator_index: Optional[int] = None
+    locator_type_2: Optional[str] = None
+    locator_value_2: Optional[str] = None
+    locator_index_2: Optional[int] = None
+    locator_type_3: Optional[str] = None
+    locator_value_3: Optional[str] = None
+    locator_index_3: Optional[int] = None
     
     # 步骤详情(公共步骤)
     details: list['StepConfig'] = field(default_factory=list)
@@ -91,6 +100,7 @@ class PlaywrightExecutor:
         self._page: Optional[Page] = None
         self._stop_requested = False
         self._current_trace_path: Optional[str] = None
+        self._page_errors: list[str] = []
         
         Path(self.user_data_dir).mkdir(parents=True, exist_ok=True)
         Path(self.screenshot_dir).mkdir(parents=True, exist_ok=True)
@@ -195,7 +205,25 @@ class PlaywrightExecutor:
     def stop(self):
         """请求停止执行"""
         self._stop_requested = True
-    
+
+    def _setup_page_listeners(self, page: Page):
+        """注册页面基础事件监听（自动处理弹窗、记录控制台 JS 错误）"""
+        async def handle_dialog(dialog):
+            logger.warning(f"检测到浏览器弹窗 [{dialog.type}]: '{dialog.message}'，已自动 accept。")
+            try:
+                await dialog.accept()
+            except Exception as e:
+                logger.error(f"处理浏览器弹窗异常: {e}")
+
+        def handle_pageerror(exception):
+            logger.error(f"页面 JS 抛出未捕获异常: {exception}")
+            if not hasattr(self, '_page_errors'):
+                self._page_errors = []
+            self._page_errors.append(str(exception))
+
+        page.on("dialog", handle_dialog)
+        page.on("pageerror", handle_pageerror)
+
     def _get_locator(self, page: Page, locator_type: str, locator_value: str):
         """根据定位类型获取元素定位器"""
         locator_map = {
@@ -266,17 +294,64 @@ class PlaywrightExecutor:
             return False, f"元素定位器为空，请在元素管理中配置定位表达式（步骤: {step.description or step.step_id}）", None
         
         locator_start = time.time()
-        locator = self._get_locator(page, step.locator_type, step.locator_value)
-        
-        # 先等待元素可见（更短的超时时间加快检测）
-        try:
-            await locator.wait_for(state="visible", timeout=5000)
-        except Exception:
-            # 5秒内没有可见，继续尝试操作（可能是 hidden 元素）
-            pass
-        
+        target = page
+        if step.is_iframe and step.iframe_locator:
+            logger.info(f"切换至 iframe 上下文, 表达式: {step.iframe_locator}")
+            iframe_selectors = [step.iframe_locator]
+            if ">>>" in step.iframe_locator:
+                iframe_selectors = [s.strip() for s in step.iframe_locator.split(">>>") if s.strip()]
+            elif ">>" in step.iframe_locator:
+                iframe_selectors = [s.strip() for s in step.iframe_locator.split(">>") if s.strip()]
+
+            for selector in iframe_selectors:
+                target = target.frame_locator(selector)
+
+        locators_to_try = [
+            (step.locator_type, step.locator_value, step.locator_index),
+        ]
+        if step.locator_type_2 and step.locator_value_2:
+            locators_to_try.append((step.locator_type_2, step.locator_value_2, step.locator_index_2))
+        if step.locator_type_3 and step.locator_value_3:
+            locators_to_try.append((step.locator_type_3, step.locator_value_3, step.locator_index_3))
+
+        locator = None
+        locator_type_used = step.locator_type
+        locator_value_used = step.locator_value
+
+        for idx, (locator_type, locator_value, locator_index) in enumerate(locators_to_try, start=1):
+            if not locator_value or not locator_value.strip():
+                continue
+
+            logger.info(
+                f"步骤 {step.step_id}: 尝试定位器 {idx} [{locator_type}={locator_value}]"
+                + (f" 下标 {locator_index}" if locator_index is not None else "")
+            )
+            candidate = self._get_locator(target, locator_type, locator_value)
+            if locator_index is not None:
+                candidate = candidate.nth(locator_index)
+
+            try:
+                await candidate.wait_for(state="visible", timeout=5000 if idx == 1 else 2000)
+                locator = candidate
+                locator_type_used = locator_type
+                locator_value_used = locator_value
+                logger.info(f"步骤 {step.step_id}: 定位器 {idx} [{locator_type}={locator_value}] 可见并被成功选中")
+                break
+            except Exception as exc:
+                logger.warning(f"步骤 {step.step_id}: 定位器 {idx} [{locator_type}={locator_value}] 尝试失败或不可见: {exc}")
+                if idx == len(locators_to_try):
+                    locator = candidate
+                    locator_type_used = locator_type
+                    locator_value_used = locator_value
+
+        if locator is None:
+            return False, f"所有定位器都失效（包含备用定位器，步骤: {step.description or step.step_id}）", None
+
         locator_time = time.time() - locator_start
-        logger.debug(f"步骤 {step.step_id}: 定位元素 [{step.locator_type}={step.locator_value}] 耗时 {locator_time:.2f}s")
+        logger.debug(
+            f"步骤 {step.step_id}: 定位元素 [{locator_type_used}={locator_value_used}] "
+            f"耗时 {locator_time:.2f}s (iframe={step.is_iframe})"
+        )
         
         element_operations = {
             'click': lambda: locator.click(),
@@ -370,6 +445,8 @@ class PlaywrightExecutor:
             # 使用带 trace 的浏览器会话
             async with self.browser_session_with_trace(trace_name) as page:
                 logger.info(f"开始执行用例: {config.case_name}")
+                self._page_errors = []
+                self._setup_page_listeners(page)
 
                 # 浏览器启动后，立即导航到环境配置的 base_url
                 base_url = ''
@@ -470,6 +547,8 @@ class PlaywrightExecutor:
                 duration = time.time() - start_time
                 status = 'success' if failed_steps == 0 else 'failed'
                 message = f"用例执行{'成功' if status == 'success' else '失败'}: 通过 {passed_steps}/{total_steps}"
+                if self._page_errors:
+                    message += f" (捕获 {len(self._page_errors)} 个页面 JS 错误: {'; '.join(self._page_errors[:3])})"
                 logger.info(f"✅ {message}" if status == 'success' else f"❌ {message}")
                 
                 # 获取 trace 文件路径（会在 browser_session_with_trace 结束时设置）
@@ -519,6 +598,8 @@ class PlaywrightExecutor:
         try:
             async with self.browser_session() as page:
                 logger.info(f"开始执行页面步骤: {config.page_name}")
+                self._page_errors = []
+                self._setup_page_listeners(page)
                 
                 # 导航到页面
                 if config.page_url:
@@ -619,6 +700,8 @@ class PlaywrightExecutor:
 
             page = await context.new_page()
             page.set_default_timeout(self.action_timeout)
+            self._page_errors = []
+            self._setup_page_listeners(page)
 
             logger.info(f"[并发] 开始执行用例: {config.case_name}")
 
@@ -716,6 +799,8 @@ class PlaywrightExecutor:
             duration = time.time() - start_time
             status = 'success' if failed_steps == 0 else 'failed'
             message = f"用例执行{'成功' if status == 'success' else '失败'}: 通过 {passed_steps}/{total_steps}"
+            if self._page_errors:
+                message += f" (捕获 {len(self._page_errors)} 个页面 JS 错误: {'; '.join(self._page_errors[:3])})"
 
             # 保存 Trace
             if trace_enabled:

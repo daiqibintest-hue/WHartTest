@@ -250,6 +250,10 @@ export interface DocumentContentResponse {
     total_pages: number;
     items: DocumentChunk[];
   };
+  images?: Array<{
+    image_index: number;
+    image_url: string;
+  }>;
 }
 
 /**
