@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
 import { API_BASE_URL } from '@/config/api';
+import { normalizeListPayload } from '@/features/api-testing/services/responseHelpers';
 
 // 测试用例步骤接口
 export interface TestCaseStep {
@@ -199,34 +200,14 @@ export const getTestCaseList = async (projectId: number, params?: PaginationPara
       },
     });
 
-    // 检查响应格式
     if (response.data && response.data.status === 'success') {
-      // 处理直接返回数组的情况
-      if (Array.isArray(response.data.data)) {
-        return {
-          success: true,
-          data: response.data.data,
-          total: response.data.data.length,
-          statusCode: response.data.code,
-        };
-      }
-      // 处理返回分页对象的情况
-      else if (response.data.data && response.data.data.results) {
-        return {
-          success: true,
-          data: response.data.data.results,
-          total: response.data.data.count,
-          statusCode: response.data.code,
-        };
-      }
-      // 其他情况
-      else {
-        return {
-          success: false,
-          error: '获取测试用例列表失败：响应数据格式不正确',
-          statusCode: response.data.code,
-        };
-      }
+      const { results, count } = normalizeListPayload(response.data.data);
+      return {
+        success: true,
+        data: results,
+        total: count,
+        statusCode: response.data.code,
+      };
     } else {
       return {
         success: false,

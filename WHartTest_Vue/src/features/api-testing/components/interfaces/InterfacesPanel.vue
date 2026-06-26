@@ -7,6 +7,7 @@ import { IconPlus, IconSearch, IconFolder, IconEdit, IconDelete, IconList, IconA
 import type { ApiModule, PaginatedData, ApiInterface } from '../../services/interfaceService'
 import { getInterfaces, getInterfaceById, deleteInterface } from '../../services/interfaceService'
 import { getModules, createModule, updateModule, deleteModule } from '../../services/moduleService'
+import { toArray } from '../../services/responseHelpers'
 import ApiDetail from './ApiDetail.vue'
 import ApiTabs from './ApiTabs.vue'
 import ModuleTree from './ModuleTree.vue'
@@ -54,6 +55,10 @@ const currentModuleName = computed(() => {
   return selectedApi.value.name
 })
 
+const toInterfaceList = (results: unknown): ApiInterface[] => {
+  return toArray<ApiInterface>(results)
+}
+
 // 获取接口列表（支持分页）
 const fetchInterfaceListForDisplay = async () => {
   if (!projectStore.currentProjectId) {
@@ -72,9 +77,10 @@ const fetchInterfaceListForDisplay = async () => {
     
     const { data } = await getInterfaces(params)
     if (data) {
-      allInterfaces.value = data.results || []
+      const resultList = toInterfaceList(data.results ?? data)
+      allInterfaces.value = resultList
       pagination.value.total = data.count || 0
-      console.log(`获取到${data.results?.length || 0}个接口，总数：${data.count}`)
+      console.log(`获取到${resultList.length}个接口，总数：${data.count}`)
     } else {
       allInterfaces.value = []
       pagination.value.total = 0
@@ -102,12 +108,13 @@ const fetchInterfaces = async (moduleId?: number | null) => {
       project_id: Number(projectStore.currentProjectId),
       page_size: 1000 // 设置较大的页面大小，确保能显示所有接口
     })
-    if (data?.results) {
-      interfaces.value = data.results
-      console.log(`获取到${data.results.length}个接口`)
+    const resultList = toInterfaceList(data?.results ?? data)
+    if (resultList.length > 0) {
+      interfaces.value = resultList
+      console.log(`获取到${resultList.length}个接口`)
       // 如果有选中的接口，更新它的数据
       if (selectedInterface.value) {
-        const updatedInterface = data.results.find(item => item.id === selectedInterface.value?.id)
+        const updatedInterface = resultList.find(item => item.id === selectedInterface.value?.id)
         if (updatedInterface) {
           selectedInterface.value = updatedInterface
         }
@@ -140,10 +147,11 @@ const fetchNoModuleInterfaces = async () => {
       no_module: true
     })
     
-    if (data?.results && data.results.length > 0) {
-      noModuleInterfaces.value = data.results
+    const resultList = toInterfaceList(data?.results ?? data)
+    if (resultList.length > 0) {
+      noModuleInterfaces.value = resultList
       hasNoModuleInterfaces.value = true
-      console.log(`获取到${data.results.length}个无模块接口`)
+      console.log(`获取到${resultList.length}个无模块接口`)
     } else {
       noModuleInterfaces.value = []
       hasNoModuleInterfaces.value = false
@@ -178,11 +186,7 @@ const fetchApiModules = async () => {
       project_id: projectStore.currentProjectId
     })
 
-    if (response.data?.results) {
-      apis.value = response.data.results
-    } else {
-      apis.value = []
-    }
+    apis.value = toArray<ApiModule>(response.data?.results ?? response.data)
     
     // 获取无模块接口
     await fetchNoModuleInterfaces()
@@ -249,10 +253,11 @@ const handleSelectModule = async (module: ApiModule) => {
         page_size: 1000 // 设置较大的页面大小，确保能显示所有接口
       })
       
-      if (data?.results && data.results.length > 0) {
-        console.log(`模块${module.name}获取到${data.results.length}个接口`)
+      const resultList = toInterfaceList(data?.results ?? data)
+      if (resultList.length > 0) {
+        console.log(`模块${module.name}获取到${resultList.length}个接口`)
       }
-      interfaces.value = data?.results || []
+      interfaces.value = resultList
     } catch (error: any) {
       Message.error(error.message || '获取接口列表失败')
       interfaces.value = []
@@ -272,14 +277,15 @@ const handleSelectModule = async (module: ApiModule) => {
         page_size: 1000
       })
       
-      if (data?.results && data.results.length > 0) {
-        console.log(`模块${module.name}获取到${data.results.length}个接口`)
+      const resultList = toInterfaceList(data?.results ?? data)
+      if (resultList.length > 0) {
+        console.log(`模块${module.name}获取到${resultList.length}个接口`)
         // 如果有接口数据，就展开该模块
         if (!expandedIds.value.includes(module.id)) {
           expandedIds.value.push(module.id)
         }
       }
-      interfaces.value = data?.results || []
+      interfaces.value = resultList
     } catch (error: any) {
       Message.error(error.message || '获取接口列表失败')
       interfaces.value = []
