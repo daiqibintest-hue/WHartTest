@@ -1,4 +1,3 @@
-import unittest
 from importlib.util import find_spec
 from unittest.mock import Mock, patch
 
@@ -29,11 +28,10 @@ else:
     LLMGlobalBundleRotationState = None
 
 
-@unittest.skipUnless(
-    BUNDLE_RUNTIME_AVAILABLE,
-    "LLM bundle runtime implementation is not included in this repository",
-)
-class LLMConfigBundleRuntimeTests(TestCase):
+BundleRuntimeTestCase = TestCase if BUNDLE_RUNTIME_AVAILABLE else object
+
+
+class LLMConfigBundleRuntimeTests(BundleRuntimeTestCase):
     def setUp(self):
         self.user_model = get_user_model()
         self.owner = self.user_model.objects.create_user(

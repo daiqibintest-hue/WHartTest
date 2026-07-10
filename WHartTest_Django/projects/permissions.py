@@ -125,3 +125,7 @@ class HasProjectMemberPermission(HasModelPermission):
         """
         # 将成员管理动作固定映射到 projects.projectmember 模型权限编码。
         return ProjectMember, 'projects', 'projectmember'
+
+    def has_object_permission(self, request, view, obj):
+        """对象级检查仍使用 ProjectMember 权限，而不是目标 Project 的权限。"""
+        return self.has_permission(request, view)

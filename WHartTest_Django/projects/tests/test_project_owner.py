@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from projects.models import Project, ProjectMember
 
 
@@ -63,6 +63,13 @@ class ProjectOwnerTests(TestCase):
         )
 
         # 设置API客户端
+        # 成员角色管理同时要求项目 owner 身份和 Django 模型变更权限。
+        change_member_permission = Permission.objects.get(
+            content_type__app_label='projects',
+            codename='change_projectmember',
+        )
+        self.owner.user_permissions.add(change_member_permission)
+
         self.client = APIClient()
 
     def test_change_project_owner(self):
