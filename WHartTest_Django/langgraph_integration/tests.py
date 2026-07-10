@@ -1,3 +1,5 @@
+import unittest
+from importlib.util import find_spec
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
@@ -6,15 +8,31 @@ from django.urls import reverse
 from langchain_core.messages import AIMessage, HumanMessage
 from rest_framework.test import APIClient
 
-from .bundle_runtime import LLMConfigResolutionError, resolve_llm_config
-from .models import (
-    DEFAULT_LLM_BUNDLE_SLOT_KEY,
-    LLMConfigBundle,
-    LLMConfigBundleSlot,
-    LLMGlobalBundleRotationState,
+BUNDLE_RUNTIME_AVAILABLE = (
+    find_spec(f"{__package__}.bundle_runtime") is not None
 )
 
+if BUNDLE_RUNTIME_AVAILABLE:
+    from .bundle_runtime import LLMConfigResolutionError, resolve_llm_config
+    from .models import (
+        DEFAULT_LLM_BUNDLE_SLOT_KEY,
+        LLMConfigBundle,
+        LLMConfigBundleSlot,
+        LLMGlobalBundleRotationState,
+    )
+else:
+    LLMConfigResolutionError = None
+    resolve_llm_config = None
+    DEFAULT_LLM_BUNDLE_SLOT_KEY = None
+    LLMConfigBundle = None
+    LLMConfigBundleSlot = None
+    LLMGlobalBundleRotationState = None
 
+
+@unittest.skipUnless(
+    BUNDLE_RUNTIME_AVAILABLE,
+    "LLM bundle runtime implementation is not included in this repository",
+)
 class LLMConfigBundleRuntimeTests(TestCase):
     def setUp(self):
         self.user_model = get_user_model()
