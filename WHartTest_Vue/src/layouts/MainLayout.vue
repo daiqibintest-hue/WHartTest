@@ -6,6 +6,7 @@
         <div class="logo" unselectable="on">
           <img :src="brandLogoUrl" alt="WHartTest Logo" class="logo-icon" />
           <span class="logo-text">WHartTest</span>
+          <img :src="brandBadgeUrl" alt="CE" class="logo-ce-icon" />
         </div>
         <div class="project-selector" v-if="showProjectSelector">
           <a-select
@@ -43,6 +44,21 @@
               :label="env.name"
             />
           </a-select>
+        </div>
+        <!-- 顶部视图切换器 - 仅在用例管理页面展示 -->
+        <div class="header-view-switch" v-if="isTestCaseManagementPage">
+          <a-radio-group type="button" v-model="testCaseActiveView" size="medium" class="view-selector-group">
+            <a-radio value="list">
+              <template #default>
+                <icon-list /> 列表视图
+              </template>
+            </a-radio>
+            <a-radio value="mindmap">
+              <template #default>
+                <icon-relation /> 思维导图
+              </template>
+            </a-radio>
+          </a-radio-group>
         </div>
       </div>
       <div class="user-info">
@@ -224,6 +240,10 @@
               <template #icon><icon-apps /></template>
               <a href="#" @click="checkProjectAndNavigate($event, '/skills')">{{ skillsMenuLabel }}</a>
             </a-menu-item>
+            <a-menu-item key="operation-logs" v-if="hasOperationLogsPermission">
+              <template #icon><icon-history /></template>
+              <a href="#" @click="checkProjectAndNavigate($event, '/operation-logs')">{{ operationLogsMenuLabel }}</a>
+            </a-menu-item>
           </a-sub-menu>
         </a-menu>
         <!-- 侧边栏底部收起/展开按钮 -->
@@ -256,14 +276,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, watch, provide } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnvironmentStore } from '@/features/api-testing/stores/environmentStore';
 import { useAppI18n } from '@/composables/useAppI18n';
-import { brandLogoUrl } from '@/utils/assetUrl';
+import { brandLogoUrl, getPublicAssetUrl } from '@/utils/assetUrl';
+
+const brandBadgeUrl = getPublicAssetUrl('CE.svg');
 import AppLocaleToggle from '@/components/AppLocaleToggle.vue';
 import {
   getCurrentVersion,
@@ -281,6 +303,8 @@ import {
   SubMenu as ASubMenu,
   Select as ASelect,
   Popover as APopover,
+  Radio as ARadio,
+  RadioGroup as ARadioGroup,
   Message
 } from '@arco-design/web-vue';
 import {
@@ -306,6 +330,8 @@ import {
   IconSchedule,
   IconSunFill,
   IconMoonFill,
+  IconList,
+  IconRelation,
 } from '@arco-design/web-vue/es/icon';
 import '@arco-design/web-vue/dist/arco.css'; // 引入 Arco Design 样式
 
@@ -317,6 +343,13 @@ const AOption = ASelect.Option;
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+const testCaseActiveView = ref<'list' | 'mindmap'>('list');
+provide('testCaseActiveView', testCaseActiveView);
+
+const isTestCaseManagementPage = computed(() => {
+  return router.currentRoute.value.name === 'TestCaseManagement';
+});
 const projectStore = useProjectStore();
 const themeStore = useThemeStore();
 const environmentStore = useEnvironmentStore();
@@ -347,6 +380,7 @@ const systemMenuLabel = computed(() => (locale.value === 'en-US' ? 'Admin' : tl(
 const usersMenuLabel = computed(() => (locale.value === 'en-US' ? 'Users' : tl('用户管理')));
 const organizationsMenuLabel = computed(() => (locale.value === 'en-US' ? 'Teams' : tl('组织管理')));
 const permissionsMenuLabel = computed(() => (locale.value === 'en-US' ? 'Access' : tl('权限管理')));
+const operationLogsMenuLabel = computed(() => (locale.value === 'en-US' ? 'Logs' : tl('操作日志')));
 const modelsMenuLabel = computed(() => (locale.value === 'en-US' ? 'Models' : tl('LLM配置')));
 const mcpMenuLabel = computed(() => (locale.value === 'en-US' ? 'MCP' : tl('MCP配置')));
 const skillsMenuLabel = computed(() => (locale.value === 'en-US' ? 'Skills' : tl('Skills管理')));
@@ -401,6 +435,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/users')) return 'users';
   if (path.startsWith('/organizations')) return 'organizations';
   if (path.startsWith('/permissions')) return 'permissions';
+  if (path.startsWith('/operation-logs')) return 'operation-logs';
   if (path.startsWith('/llm-configs')) return 'llm-configs';
   if (path.startsWith('/langgraph-chat')) return 'langgraph-chat';
   if (path.startsWith('/task-center')) return 'task-center';
@@ -476,6 +511,10 @@ const hasPermissionsPermission = computed(() => {
   return authStore.hasPermission('auth.view_permission');
 });
 
+const hasOperationLogsPermission = computed(() => {
+  return authStore.currentUser?.is_staff || authStore.hasPermission('operation_logs.view_operationlog');
+});
+
 const hasLlmConfigsPermission = computed(() => {
   return authStore.hasPermission('langgraph_integration.view_llmconfig') ||
          authStore.hasPermission('llm_config.view_llmconfiguration') ||
@@ -510,7 +549,8 @@ const hasSystemMenuItems = computed(() => {
          hasLlmConfigsPermission.value ||
          hasApiKeysPermission.value ||
          hasMcpConfigsPermission.value ||
-         hasSkillsPermission.value;
+         hasSkillsPermission.value ||
+         hasOperationLogsPermission.value;
 });
 
 // 切换侧边栏收起状态
@@ -700,7 +740,7 @@ onMounted(async () => {
   margin: 0;
   margin-right: 20px;
   box-sizing: border-box;
-  width: 140px;
+  width: 150px;
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -717,6 +757,15 @@ onMounted(async () => {
 
 .logo-text {
   flex-shrink: 0;
+}
+
+.logo-ce-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 15px;
+  margin-left: 6px;
+  object-fit: contain;
+  transform: translateY(-25%);
 }
 
 .project-selector {
@@ -1194,5 +1243,17 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   margin: 0 auto;
+}
+
+.header-view-switch {
+  margin-left: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.view-selector-group {
+  background-color: var(--theme-surface-soft) !important;
+  border-radius: 6px;
+  padding: 2px;
 }
 </style>

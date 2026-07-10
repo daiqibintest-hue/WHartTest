@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, inject } from 'vue'
+import type { Ref } from 'vue'
 import type { ApiModule, ApiInterface } from '../../services/interfaceService'
 import { getInterfaces, getInterfaceById } from '../../services/interfaceService'
 import { toArray } from '../../services/responseHelpers'
@@ -134,6 +135,101 @@ const handleInterfaceSelect = async (api: ApiInterface) => {
   // 否则请求详情
   await fetchInterfaceDetail(api)
 }
+
+// 拖拽排序逻辑注入与处理
+const draggingModule = inject<Ref<ApiModule | null>>('draggingModule')
+const dragOverModule = inject<Ref<ApiModule | null>>('dragOverModule')
+const dragOverPosition = inject<Ref<number | null>>('dragOverPosition')
+const handleModuleDrop = inject<(dragged: ApiModule, target: ApiModule, position: number) => Promise<void>>('handleModuleDrop')
+
+const isDragging = computed(() => draggingModule?.value?.id === props.module.id)
+const isDragOver = computed(() => dragOverModule?.value?.id === props.module.id)
+const currentDragOverPos = computed(() => isDragOver.value ? dragOverPosition?.value : null)
+
+const handleDragStart = (e: DragEvent) => {
+  if (draggingModule) {
+    draggingModule.value = props.module
+  }
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(props.module.id))
+  }
+}
+
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault()
+  if (!draggingModule?.value || draggingModule.value.id === props.module.id) return
+
+  // 防止将父模块拖拽到其子孙模块下
+  const descendantIds = getAllDescendantIds(draggingModule.value)
+  if (descendantIds.includes(props.module.id)) {
+    return
+  }
+
+  if (dragOverModule) {
+    dragOverModule.value = props.module
+  }
+
+  // 根据鼠标在目标元素上的垂直坐标，判断位置（-1 之前，0 之中/作为子模块，1 之后）
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const relativeY = e.clientY - rect.top
+  const height = rect.height
+
+  let position = 0
+  if (relativeY < height * 0.25) {
+    position = -1
+  } else if (relativeY > height * 0.75) {
+    position = 1
+  } else {
+    position = 0
+  }
+
+  if (dragOverPosition) {
+    dragOverPosition.value = position
+  }
+}
+
+const getAllDescendantIds = (module: ApiModule): number[] => {
+  let ids = [module.id]
+  if (module.children) {
+    module.children.forEach(child => {
+      ids = ids.concat(getAllDescendantIds(child))
+    })
+  }
+  return ids
+}
+
+const handleDragLeave = () => {
+  if (dragOverModule?.value?.id === props.module.id) {
+    dragOverModule.value = null
+    if (dragOverPosition) {
+      dragOverPosition.value = null
+    }
+  }
+}
+
+const handleDragEnd = () => {
+  if (draggingModule) {
+    draggingModule.value = null
+  }
+  if (dragOverModule) {
+    dragOverModule.value = null
+  }
+  if (dragOverPosition) {
+    dragOverPosition.value = null
+  }
+}
+
+const handleDrop = async (e: DragEvent) => {
+  e.preventDefault()
+  if (!draggingModule?.value || draggingModule.value.id === props.module.id) return
+  if (!handleModuleDrop || dragOverPosition?.value === null) return
+
+  const position = dragOverPosition.value
+  const dragged = draggingModule.value
+
+  await handleModuleDrop(dragged, props.module, position)
+}
 </script>
 
 <template>
@@ -142,9 +238,19 @@ const handleInterfaceSelect = async (api: ApiInterface) => {
     <div
       class="module-tree__item px-6 py-2 cursor-pointer transition-colors rounded-lg"
       :class="{ 
-        'module-tree__item--selected': isSelected
+        'module-tree__item--selected': isSelected,
+        'module-tree__item--dragging': isDragging,
+        'module-tree__item--drag-over-before': currentDragOverPos === -1,
+        'module-tree__item--drag-over-inside': currentDragOverPos === 0,
+        'module-tree__item--drag-over-after': currentDragOverPos === 1
       }"
       :style="{ paddingLeft: `${paddingLeft}px` }"
+      draggable="true"
+      @dragstart="handleDragStart"
+      @dragover="handleDragOver"
+      @dragleave="handleDragLeave"
+      @dragend="handleDragEnd"
+      @drop="handleDrop"
       @click.stop="emit('select', module)"
     >
       <div class="flex items-center justify-between">
@@ -357,6 +463,44 @@ const handleInterfaceSelect = async (api: ApiInterface) => {
 .module-tree__item--selected {
   background-color: var(--interface-module-active, rgba(24, 144, 255, 0.16));
   box-shadow: inset 0 0 0 1px var(--interface-module-active-border, rgba(24, 144, 255, 0.2));
+}
+
+.module-tree__item--dragging {
+  opacity: 0.4;
+  border: 1px dashed var(--color-text-3, #86909c);
+}
+
+.module-tree__item--drag-over-before {
+  position: relative;
+}
+.module-tree__item--drag-over-before::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--color-primary, #165dff);
+  z-index: 10;
+}
+
+.module-tree__item--drag-over-inside {
+  background-color: var(--interface-module-hover, rgba(24, 144, 255, 0.15)) !important;
+  outline: 2px solid var(--color-primary, #165dff);
+}
+
+.module-tree__item--drag-over-after {
+  position: relative;
+}
+.module-tree__item--drag-over-after::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--color-primary, #165dff);
+  z-index: 10;
 }
 
 .module-tree__name {

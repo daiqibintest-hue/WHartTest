@@ -59,7 +59,7 @@ export interface TestCase {
   precondition: string;
   level: string; // P0, P1, P2, P3
   test_type?: string; // smoke, functional, boundary, exception, permission, security, compatibility
-  steps: TestCaseStep[];
+  steps?: TestCaseStep[];
   notes?: string; // 备注字段
   screenshot?: string; // 兼容旧的单个截图字段
   screenshots?: TestCaseScreenshot[]; // 新的多截图字段
@@ -113,6 +113,7 @@ export interface PaginationParams {
   review_status_in?: ReviewStatus[]; // 多个审核状态筛选
   test_type?: string; // 单个测试类型筛选
   test_type_in?: string[]; // 多个测试类型筛选
+  include_steps?: boolean; // 是否返回步骤详情，默认列表不返回；思维导图需要传 true
 }
 
 // 测试用例列表响应接口
@@ -192,6 +193,7 @@ export const getTestCaseList = async (projectId: number, params?: PaginationPara
         test_type: params.test_type, // 传递 test_type（单个）
         // 多个测试类型筛选，用逗号连接
         test_type_in: params.test_type_in?.join(','),
+        include_steps: params.include_steps ? 'true' : undefined,
       } : undefined,
       headers: {
         'Authorization': `Bearer ${accessToken}`,

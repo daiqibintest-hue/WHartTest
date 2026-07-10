@@ -28,6 +28,9 @@ export const moduleService = {
 
   tree: (projectId: number) =>
     request<ApiModule[]>({ url: `${base(projectId)}/tree/`, method: 'GET' }),
+
+  move: (projectId: number, id: number, data: { target_id: number | null; drop_position: number }) =>
+    request<ApiModule>({ url: `${base(projectId)}/${id}/move/`, method: 'POST', data }),
 };
 
 // ---------------------------------------------------------------------------
@@ -41,6 +44,47 @@ function _pid(params?: Record<string, any>): number {
     return pid;
   }
   return useProjectStore().currentProjectId ?? 0;
+}
+
+function _normalizeListPayload(payload: any, fallbackTotal?: number): { results: any[]; count: number } {
+  let current = payload;
+  let countHint = fallbackTotal;
+
+  for (let i = 0; i < 5; i += 1) {
+    if (Array.isArray(current)) {
+      return { results: current, count: countHint ?? current.length };
+    }
+
+    if (!current || typeof current !== 'object') {
+      break;
+    }
+
+    if (typeof current.count === 'number') {
+      countHint = current.count;
+    }
+
+    if (Array.isArray(current.results)) {
+      return { results: current.results, count: countHint ?? current.results.length };
+    }
+
+    if (Array.isArray(current.data)) {
+      return { results: current.data, count: countHint ?? current.data.length };
+    }
+
+    if (current.data && typeof current.data === 'object' && current.data !== current) {
+      current = current.data;
+      continue;
+    }
+
+    if (current.results && typeof current.results === 'object' && current.results !== current) {
+      current = current.results;
+      continue;
+    }
+
+    break;
+  }
+
+  return { results: [], count: countHint ?? 0 };
 }
 
 function _wrapList(res: any): any {
@@ -79,6 +123,10 @@ export async function updateModule(id: number, data: any) {
 
 export async function deleteModule(id: number) {
   return _wrapOne(await moduleService.delete(_pid(), id));
+}
+
+export async function moveModule(id: number, data: { target_id: number | null; drop_position: number }) {
+  return _wrapOne(await moduleService.move(_pid(), id, data));
 }
 
 export type { ApiModule };
